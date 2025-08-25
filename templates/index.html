@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Home Maintenance Tracker</h1>
+<p>Keep track of your home maintenance tasks automatically!</p>
+
+<h2>Get Started</h2>
+<p><a href="{{ url_for('register') }}">Sign Up</a> | <a href="{{ url_for('login') }}">Login</a></p>
+
+<h3>How it works:</h3>
+<ol>
+    <li>Sign up for an account</li>
+    <li>Tell us about your home (HVAC, gutters, appliances, etc.)</li>
+    <li>We'll automatically generate maintenance tasks for you</li>
+    <li>Track your completed tasks and never miss important maintenance!</li>
+</ol>
+{% endblock %}

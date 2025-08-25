@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Your Home Maintenance Dashboard</h1>
+
+{% if overdue_tasks %}
+<h2 style="color: #dc3545;">⚠️ Overdue Tasks</h2>
+{% for task in overdue_tasks %}
+<div class="task overdue">
+    <h3>{{ task.title }}</h3>
+    <p>{{ task.description }}</p>
+    <p><strong>Due:</strong> {{ task.next_due_date }}</p>
+    <a href="{{ url_for('complete_task', task_id=task.id) }}">
+        <button>Mark Complete</button>
+    </a>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if upcoming_tasks %}
+<h2 style="color: #ffc107;">📅 Upcoming Tasks (Next 30 Days)</h2>
+{% for task in upcoming_tasks %}
+<div class="task upcoming">
+    <h3>{{ task.title }}</h3>
+    <p>{{ task.description }}</p>
+    <p><strong>Due:</strong> {{ task.next_due_date }}</p>
+    <a href="{{ url_for('complete_task', task_id=task.id) }}">
+        <button>Mark Complete</button>
+    </a>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if future_tasks %}
+<h2 style="color: #6c757d;">📋 Future Tasks</h2>
+{% for task in future_tasks %}
+<div class="task future">
+    <h3>{{ task.title }}</h3>
+    <p>{{ task.description }}</p>
+    <p><strong>Due:</strong> {{ task.next_due_date }}</p>
+    <a href="{{ url_for('complete_task', task_id=task.id) }}">
+        <button>Mark Complete</button>
+    </a>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if not overdue_tasks and not upcoming_tasks and not future_tasks %}
+<p>No tasks found! <a href="{{ url_for('questionnaire') }}">Update your home features</a> to generate tasks.</p>
+{% endif %}
+
+{% if completed_tasks %}
+<h2 style="color: #28a745;">✅ Recently Completed Tasks</h2>
+{% for task in completed_tasks %}
+<div class="task completed">
+    <h3>{{ task.title }}</h3>
+    <p>{{ task.description }}</p>
+    <p><strong>Completed:</strong> {{ task.last_completed }}</p>
+    <p><strong>Next Due:</strong> {{ task.next_due_date }}</p>
+    <a href="{{ url_for('reset_task', task_id=task.id) }}">
+        <button style="background-color: #6c757d;">Undo Complete</button>
+    </a>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

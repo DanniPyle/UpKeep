@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Tell Us About Your Home</h1>
+<p>Check all the features your home has. We'll create maintenance tasks based on your selections.</p>
+
+<form method="POST">
+    <div class="checkbox-group">
+        <div class="checkbox-item">
+            <input type="checkbox" id="has_hvac" name="has_hvac">
+            <label for="has_hvac">HVAC System (Heating/Air Conditioning)</label>
+        </div>
+        
+        <div class="checkbox-item">
+            <input type="checkbox" id="has_gutters" name="has_gutters">
+            <label for="has_gutters">Gutters</label>
+        </div>
+        
+        <div class="checkbox-item">
+            <input type="checkbox" id="has_dishwasher" name="has_dishwasher">
+            <label for="has_dishwasher">Dishwasher</label>
+        </div>
+        
+        <div class="checkbox-item">
+            <input type="checkbox" id="has_smoke_detectors" name="has_smoke_detectors">
+            <label for="has_smoke_detectors">Smoke Detectors</label>
+        </div>
+        
+        <div class="checkbox-item">
+            <input type="checkbox" id="has_water_heater" name="has_water_heater">
+            <label for="has_water_heater">Water Heater</label>
+        </div>
+    </div>
+    
+    <button type="submit">Save & Generate Tasks</button>
+</form>
+{% endblock %}
