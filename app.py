@@ -337,6 +337,135 @@ def reset_task(task_id):
     
     return redirect(url_for('dashboard'))
 
+@app.route('/create_task', methods=['POST'])
+def create_task():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user_id = session['user_id']
+    title = request.form['title']
+    description = request.form.get('description', '')
+    frequency_days = request.form['frequency_days']
+    
+    if not title or not frequency_days:
+        flash('Title and frequency are required!')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        frequency_days = int(frequency_days)
+        if frequency_days <= 0:
+            flash('Frequency must be a positive number!')
+            return redirect(url_for('dashboard'))
+    except ValueError:
+        flash('Frequency must be a valid number!')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Calculate next due date
+        next_due = datetime.now() + timedelta(days=frequency_days)
+        
+        # Insert new task
+        supabase.table('tasks').insert({
+            'user_id': user_id,
+            'title': title,
+            'description': description,
+            'frequency_days': frequency_days,
+            'next_due_date': next_due.date().isoformat(),
+            'is_completed': False
+        }).execute()
+        
+        flash(f'Task "{title}" created successfully!')
+        
+    except Exception as e:
+        flash(f'Error creating task: {str(e)}')
+    
+    return redirect(url_for('dashboard'))
+
+@app.route('/get_task/<int:task_id>')
+def get_task(task_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = session['user_id']
+    
+    try:
+        result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
+        
+        if result.data:
+            return jsonify({'task': result.data[0]})
+        else:
+            return jsonify({'error': 'Task not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/edit_task/<int:task_id>', methods=['POST'])
+def edit_task(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user_id = session['user_id']
+    title = request.form['title']
+    description = request.form.get('description', '')
+    frequency_days = request.form['frequency_days']
+    
+    if not title or not frequency_days:
+        flash('Title and frequency are required!')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        frequency_days = int(frequency_days)
+        if frequency_days <= 0:
+            flash('Frequency must be a positive number!')
+            return redirect(url_for('dashboard'))
+    except ValueError:
+        flash('Frequency must be a valid number!')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Verify task belongs to user
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
+        
+        if not task_result.data:
+            flash('Task not found!')
+            return redirect(url_for('dashboard'))
+        
+        # Update task
+        supabase.table('tasks').update({
+            'title': title,
+            'description': description,
+            'frequency_days': frequency_days
+        }).eq('id', task_id).eq('user_id', user_id).execute()
+        
+        flash(f'Task "{title}" updated successfully!')
+        
+    except Exception as e:
+        flash(f'Error updating task: {str(e)}')
+    
+    return redirect(url_for('dashboard'))
+
+@app.route('/delete_task/<int:task_id>', methods=['POST'])
+def delete_task(task_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = session['user_id']
+    
+    try:
+        # Verify task belongs to user
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
+        
+        if not task_result.data:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        # Delete task
+        supabase.table('tasks').delete().eq('id', task_id).eq('user_id', user_id).execute()
+        
+        return jsonify({'message': 'Task deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # API Endpoints for frontend
 @app.route('/api/register', methods=['POST'])
 def api_register():
@@ -546,6 +675,122 @@ def api_home_features(current_user_id):
             return jsonify({'features': features})
         else:
             return jsonify({'features': None})
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks', methods=['POST'])
+@token_required
+def api_create_task(current_user_id):
+    """Create a new custom task"""
+    try:
+        data = request.get_json()
+        title = data.get('title')
+        description = data.get('description', '')
+        frequency_days = data.get('frequency_days')
+        
+        if not title or not frequency_days:
+            return jsonify({'error': 'Title and frequency are required'}), 400
+        
+        try:
+            frequency_days = int(frequency_days)
+            if frequency_days <= 0:
+                return jsonify({'error': 'Frequency must be a positive number'}), 400
+        except ValueError:
+            return jsonify({'error': 'Frequency must be a valid number'}), 400
+        
+        # Calculate next due date
+        next_due = datetime.now() + timedelta(days=frequency_days)
+        
+        # Insert new task
+        result = supabase.table('tasks').insert({
+            'user_id': current_user_id,
+            'title': title,
+            'description': description,
+            'frequency_days': frequency_days,
+            'next_due_date': next_due.date().isoformat(),
+            'is_completed': False
+        }).execute()
+        
+        if result.data:
+            return jsonify({'message': 'Task created successfully', 'task': result.data[0]})
+        else:
+            return jsonify({'error': 'Failed to create task'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/<int:task_id>', methods=['PUT'])
+@token_required
+def api_update_task(current_user_id, task_id):
+    """Update an existing task"""
+    try:
+        data = request.get_json()
+        title = data.get('title')
+        description = data.get('description', '')
+        frequency_days = data.get('frequency_days')
+        
+        if not title or not frequency_days:
+            return jsonify({'error': 'Title and frequency are required'}), 400
+        
+        try:
+            frequency_days = int(frequency_days)
+            if frequency_days <= 0:
+                return jsonify({'error': 'Frequency must be a positive number'}), 400
+        except ValueError:
+            return jsonify({'error': 'Frequency must be a valid number'}), 400
+        
+        # Verify task belongs to user
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        if not task_result.data:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        # Update task
+        result = supabase.table('tasks').update({
+            'title': title,
+            'description': description,
+            'frequency_days': frequency_days
+        }).eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        if result.data:
+            return jsonify({'message': 'Task updated successfully', 'task': result.data[0]})
+        else:
+            return jsonify({'error': 'Failed to update task'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
+@token_required
+def api_delete_task(current_user_id, task_id):
+    """Delete a task"""
+    try:
+        # Verify task belongs to user
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        if not task_result.data:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        # Delete task
+        result = supabase.table('tasks').delete().eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        return jsonify({'message': 'Task deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/<int:task_id>', methods=['GET'])
+@token_required
+def api_get_task(current_user_id, task_id):
+    """Get a specific task for editing"""
+    try:
+        result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        if result.data:
+            return jsonify({'task': result.data[0]})
+        else:
+            return jsonify({'error': 'Task not found'}), 404
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -3,6 +3,56 @@
 {% block content %}
 <h1>Your Home Maintenance Dashboard</h1>
 
+<div style="margin-bottom: 20px;">
+    <button onclick="showCreateTaskForm()" style="background-color: #28a745;">+ Create Custom Task</button>
+</div>
+
+<!-- Create Task Form (hidden by default) -->
+<div id="create-task-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3>Create New Task</h3>
+    <form action="{{ url_for('create_task') }}" method="POST">
+        <div class="form-group">
+            <label for="task-title">Task Name:</label>
+            <input type="text" id="task-title" name="title" required>
+        </div>
+        <div class="form-group">
+            <label for="task-description">Description:</label>
+            <textarea id="task-description" name="description" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="task-frequency">Frequency (days):</label>
+            <input type="number" id="task-frequency" name="frequency_days" min="1" required>
+            <small>How often should this task repeat? (e.g., 30 for monthly, 365 for yearly)</small>
+        </div>
+        <button type="submit" style="background-color: #28a745;">Create Task</button>
+        <button type="button" onclick="hideCreateTaskForm()" style="background-color: #6c757d;">Cancel</button>
+    </form>
+</div>
+
+<!-- Edit Task Form (hidden by default) -->
+<div id="edit-task-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3>Edit Task</h3>
+    <form id="edit-form" method="POST">
+        <input type="hidden" id="edit-task-id" name="task_id">
+        <div class="form-group">
+            <label for="edit-task-title">Task Name:</label>
+            <input type="text" id="edit-task-title" name="title" required>
+        </div>
+        <div class="form-group">
+            <label for="edit-task-description">Description:</label>
+            <textarea id="edit-task-description" name="description" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="edit-task-frequency">Frequency (days):</label>
+            <input type="number" id="edit-task-frequency" name="frequency_days" min="1" required>
+            <small>How often should this task repeat? (e.g., 30 for monthly, 365 for yearly)</small>
+        </div>
+        <button type="submit" style="background-color: #007bff;">Update Task</button>
+        <button type="button" onclick="hideEditTaskForm()" style="background-color: #6c757d;">Cancel</button>
+        <button type="button" onclick="deleteTask()" style="background-color: #dc3545;">Delete Task</button>
+    </form>
+</div>
+
 {% if overdue_tasks %}
 <h2 style="color: #dc3545;">⚠️ Overdue Tasks</h2>
 {% for task in overdue_tasks %}
@@ -10,9 +60,12 @@
     <h3>{{ task.title }}</h3>
     <p>{{ task.description }}</p>
     <p><strong>Due:</strong> {{ task.next_due_date }}</p>
-    <a href="{{ url_for('complete_task', task_id=task.id) }}">
-        <button>Mark Complete</button>
-    </a>
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <a href="{{ url_for('complete_task', task_id=task.id) }}">
+            <button>Mark Complete</button>
+        </a>
+        <button onclick="editTask('{{ task.id }}')" style="background-color: #007bff;">Edit</button>
+    </div>
 </div>
 {% endfor %}
 {% endif %}
@@ -24,9 +77,12 @@
     <h3>{{ task.title }}</h3>
     <p>{{ task.description }}</p>
     <p><strong>Due:</strong> {{ task.next_due_date }}</p>
-    <a href="{{ url_for('complete_task', task_id=task.id) }}">
-        <button>Mark Complete</button>
-    </a>
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <a href="{{ url_for('complete_task', task_id=task.id) }}">
+            <button>Mark Complete</button>
+        </a>
+        <button onclick="editTask('{{ task.id }}')" style="background-color: #007bff;">Edit</button>
+    </div>
 </div>
 {% endfor %}
 {% endif %}
@@ -38,9 +94,12 @@
     <h3>{{ task.title }}</h3>
     <p>{{ task.description }}</p>
     <p><strong>Due:</strong> {{ task.next_due_date }}</p>
-    <a href="{{ url_for('complete_task', task_id=task.id) }}">
-        <button>Mark Complete</button>
-    </a>
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <a href="{{ url_for('complete_task', task_id=task.id) }}">
+            <button>Mark Complete</button>
+        </a>
+        <button onclick="editTask('{{ task.id }}')" style="background-color: #007bff;">Edit</button>
+    </div>
 </div>
 {% endfor %}
 {% endif %}
@@ -63,4 +122,60 @@
 </div>
 {% endfor %}
 {% endif %}
+
+<script>
+function showCreateTaskForm() {
+    document.getElementById('create-task-form').style.display = 'block';
+}
+
+function hideCreateTaskForm() {
+    document.getElementById('create-task-form').style.display = 'none';
+    document.getElementById('create-task-form').querySelector('form').reset();
+}
+
+function showEditTaskForm() {
+    document.getElementById('edit-task-form').style.display = 'block';
+}
+
+function hideEditTaskForm() {
+    document.getElementById('edit-task-form').style.display = 'none';
+    document.getElementById('edit-form').reset();
+}
+
+async function editTask(taskId) {
+    try {
+        const response = await fetch(`/get_task/${taskId}`);
+        const data = await response.json();
+        
+        if (data.task) {
+            document.getElementById('edit-task-id').value = data.task.id;
+            document.getElementById('edit-task-title').value = data.task.title;
+            document.getElementById('edit-task-description').value = data.task.description;
+            document.getElementById('edit-task-frequency').value = data.task.frequency_days;
+            document.getElementById('edit-form').action = `/edit_task/${taskId}`;
+            showEditTaskForm();
+        } else {
+            alert('Error loading task details');
+        }
+    } catch (error) {
+        alert('Error loading task details');
+    }
+}
+
+async function deleteTask() {
+    const taskId = document.getElementById('edit-task-id').value;
+    if (confirm('Are you sure you want to delete this task?')) {
+        try {
+            const response = await fetch(`/delete_task/${taskId}`, { method: 'POST' });
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Error deleting task');
+            }
+        } catch (error) {
+            alert('Error deleting task');
+        }
+    }
+}
+</script>
 {% endblock %}
