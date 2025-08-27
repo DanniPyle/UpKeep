@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
-from supabase import create_client, Client
+from supabase import create_client
 from datetime import datetime, timedelta
 import os
 import jwt
@@ -22,7 +22,7 @@ SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY')
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # JWT token decorator
 def token_required(f):
