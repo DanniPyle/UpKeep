@@ -1,66 +1,49 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
-import sqlite3
+from supabase import create_client, Client
 from datetime import datetime, timedelta
 import os
+import jwt
+from functools import wraps
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this'  # Change this in production!
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this')
+CORS(app)
 
-# Database initialization
-def init_db():
-    conn = sqlite3.connect('home_maintenance.db')
-    cursor = conn.cursor()
-    
-    # Users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Home features table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS home_features (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            has_hvac BOOLEAN DEFAULT 0,
-            has_gutters BOOLEAN DEFAULT 0,
-            has_dishwasher BOOLEAN DEFAULT 0,
-            has_smoke_detectors BOOLEAN DEFAULT 0,
-            has_water_heater BOOLEAN DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    
-    # Tasks table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            title TEXT NOT NULL,
-            description TEXT,
-            frequency_days INTEGER,
-            next_due_date DATE,
-            last_completed DATE,
-            is_completed BOOLEAN DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+# Supabase configuration
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY')
 
-# Helper function to get database connection
-def get_db_connection():
-    conn = sqlite3.connect('home_maintenance.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# JWT token decorator
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        
+        try:
+            if token.startswith('Bearer '):
+                token = token[7:]
+            data = jwt.decode(token, app.secret_key, algorithms=['HS256'])
+            current_user_id = data['user_id']
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Token is invalid'}), 401
+        
+        return f(current_user_id, *args, **kwargs)
+    return decorated
 
 # Task templates based on home features
 TASK_TEMPLATES = {
@@ -86,6 +69,16 @@ TASK_TEMPLATES = {
     ]
 }
 
+def reactivate_due_tasks(user_id):
+    """Reactivate completed tasks that are now due"""
+    today = datetime.now().date().isoformat()
+    try:
+        supabase.table('tasks').update({
+            'is_completed': False
+        }).eq('user_id', user_id).eq('is_completed', True).lte('next_due_date', today).execute()
+    except Exception as e:
+        print(f"Error reactivating tasks: {e}")
+
 @app.route('/')
 def index():
     if 'user_id' in session:
@@ -103,34 +96,36 @@ def register():
             flash('All fields are required!')
             return render_template('register.html')
         
-        conn = get_db_connection()
-        
-        # Check if user already exists
-        existing_user = conn.execute(
-            'SELECT id FROM users WHERE username = ? OR email = ?',
-            (username, email)
-        ).fetchone()
-        
-        if existing_user:
-            flash('Username or email already exists!')
-            conn.close()
-            return render_template('register.html')
-        
-        # Create new user
-        password_hash = generate_password_hash(password)
-        cursor = conn.execute(
-            'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-            (username, email, password_hash)
-        )
-        user_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        session['user_id'] = user_id
-        session['username'] = username
-        
-        flash('Registration successful!')
-        return redirect(url_for('questionnaire'))
+        try:
+            # Check if user already exists
+            existing_user = supabase.table('users').select('id').or_(
+                f'username.eq.{username},email.eq.{email}'
+            ).execute()
+            
+            if existing_user.data:
+                flash('Username or email already exists!')
+                return render_template('register.html')
+            
+            # Create new user
+            password_hash = generate_password_hash(password)
+            result = supabase.table('users').insert({
+                'username': username,
+                'email': email,
+                'password_hash': password_hash
+            }).execute()
+            
+            if result.data:
+                user_id = result.data[0]['id']
+                session['user_id'] = user_id
+                session['username'] = username
+                
+                flash('Registration successful!')
+                return redirect(url_for('questionnaire'))
+            else:
+                flash('Registration failed. Please try again.')
+                
+        except Exception as e:
+            flash(f'Registration error: {str(e)}')
     
     return render_template('register.html')
 
@@ -140,18 +135,19 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        conn = get_db_connection()
-        user = conn.execute(
-            'SELECT * FROM users WHERE username = ?', (username,)
-        ).fetchone()
-        conn.close()
-        
-        if user and check_password_hash(user['password_hash'], password):
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Invalid username or password!')
+        try:
+            result = supabase.table('users').select('*').eq('username', username).execute()
+            
+            if result.data and check_password_hash(result.data[0]['password_hash'], password):
+                user = result.data[0]
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Invalid username or password!')
+                
+        except Exception as e:
+            flash(f'Login error: {str(e)}')
     
     return render_template('login.html')
 
@@ -168,66 +164,67 @@ def questionnaire():
     if request.method == 'POST':
         user_id = session['user_id']
         
-        # Save home features
-        conn = get_db_connection()
-        
-        # Check if features already exist for this user
-        existing = conn.execute(
-            'SELECT id FROM home_features WHERE user_id = ?', (user_id,)
-        ).fetchone()
-        
         features = {
-            'has_hvac': 1 if 'has_hvac' in request.form else 0,
-            'has_gutters': 1 if 'has_gutters' in request.form else 0,
-            'has_dishwasher': 1 if 'has_dishwasher' in request.form else 0,
-            'has_smoke_detectors': 1 if 'has_smoke_detectors' in request.form else 0,
-            'has_water_heater': 1 if 'has_water_heater' in request.form else 0,
+            'has_hvac': 'has_hvac' in request.form,
+            'has_gutters': 'has_gutters' in request.form,
+            'has_dishwasher': 'has_dishwasher' in request.form,
+            'has_smoke_detectors': 'has_smoke_detectors' in request.form,
+            'has_water_heater': 'has_water_heater' in request.form,
         }
         
-        if existing:
-            # Update existing features
-            conn.execute('''
-                UPDATE home_features 
-                SET has_hvac=?, has_gutters=?, has_dishwasher=?, has_smoke_detectors=?, has_water_heater=?
-                WHERE user_id=?
-            ''', (*features.values(), user_id))
-        else:
-            # Insert new features
-            conn.execute('''
-                INSERT INTO home_features (user_id, has_hvac, has_gutters, has_dishwasher, has_smoke_detectors, has_water_heater)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, *features.values()))
-        
-        # Generate tasks based on features
-        generate_tasks_for_user(user_id, features, conn)
-        
-        conn.commit()
-        conn.close()
-        
-        flash('Home features saved and tasks generated!')
-        return redirect(url_for('dashboard'))
+        try:
+            # Check if features already exist for this user
+            existing = supabase.table('home_features').select('id').eq('user_id', user_id).execute()
+            
+            if existing.data:
+                # Update existing features
+                supabase.table('home_features').update({
+                    **features,
+                    'user_id': user_id
+                }).eq('user_id', user_id).execute()
+            else:
+                # Insert new features
+                supabase.table('home_features').insert({
+                    'user_id': user_id,
+                    **features
+                }).execute()
+            
+            # Generate tasks based on features
+            generate_tasks_for_user(user_id, features)
+            
+            flash('Home features saved and tasks generated!')
+            return redirect(url_for('dashboard'))
+            
+        except Exception as e:
+            flash(f'Error saving features: {str(e)}')
     
     return render_template('questionnaire.html')
 
-def generate_tasks_for_user(user_id, features, conn):
-    # Clear existing tasks for this user
-    conn.execute('DELETE FROM tasks WHERE user_id = ?', (user_id,))
-    
-    # Generate tasks based on features
-    for feature, has_feature in features.items():
-        if has_feature and feature in TASK_TEMPLATES:
-            for task_template in TASK_TEMPLATES[feature]:
-                next_due = datetime.now() + timedelta(days=task_template['frequency_days'])
-                conn.execute('''
-                    INSERT INTO tasks (user_id, title, description, frequency_days, next_due_date)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (
-                    user_id,
-                    task_template['title'],
-                    task_template['description'],
-                    task_template['frequency_days'],
-                    next_due.date()
-                ))
+def generate_tasks_for_user(user_id, features):
+    try:
+        # Clear existing tasks for this user
+        supabase.table('tasks').delete().eq('user_id', user_id).execute()
+        
+        # Generate tasks based on features
+        tasks_to_insert = []
+        for feature, has_feature in features.items():
+            if has_feature and feature in TASK_TEMPLATES:
+                for task_template in TASK_TEMPLATES[feature]:
+                    next_due = datetime.now() + timedelta(days=task_template['frequency_days'])
+                    tasks_to_insert.append({
+                        'user_id': user_id,
+                        'title': task_template['title'],
+                        'description': task_template['description'],
+                        'frequency_days': task_template['frequency_days'],
+                        'next_due_date': next_due.date().isoformat(),
+                        'is_completed': False
+                    })
+        
+        if tasks_to_insert:
+            supabase.table('tasks').insert(tasks_to_insert).execute()
+            
+    except Exception as e:
+        print(f"Error generating tasks: {e}")
 
 @app.route('/dashboard')
 def dashboard():
@@ -235,47 +232,48 @@ def dashboard():
         return redirect(url_for('login'))
     
     user_id = session['user_id']
-    conn = get_db_connection()
     
-    # Get all active tasks (not marked as completed in current cycle)
-    tasks = conn.execute('''
-        SELECT * FROM tasks 
-        WHERE user_id = ? AND is_completed = 0
-        ORDER BY next_due_date ASC
-    ''', (user_id,)).fetchall()
-    
-    # Get recently completed tasks
-    completed_tasks = conn.execute('''
-        SELECT * FROM tasks 
-        WHERE user_id = ? AND is_completed = 1
-        ORDER BY last_completed DESC
-        LIMIT 10
-    ''', (user_id,)).fetchall()
-    
-    conn.close()
-    
-    # Categorize tasks
-    overdue = []
-    upcoming = []  # Due within next 30 days
-    future = []    # Due beyond 30 days
-    today = datetime.now().date()
-    next_month = today + timedelta(days=30)
-    
-    for task in tasks:
-        task_date = datetime.strptime(task['next_due_date'], '%Y-%m-%d').date()
-        if task_date < today:
-            days_overdue = (today - task_date).days
-            overdue.append({**dict(task), 'days_overdue': days_overdue})
-        elif task_date <= next_month:
-            upcoming.append(task)
-        else:
-            future.append(task)
-    
-    return render_template('dashboard.html', 
-                         overdue_tasks=overdue, 
-                         upcoming_tasks=upcoming,
-                         future_tasks=future,
-                         completed_tasks=completed_tasks)
+    try:
+        # Reactivate tasks that are now due
+        reactivate_due_tasks(user_id)
+        
+        # Get all active tasks (not marked as completed in current cycle)
+        tasks_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', False).order('next_due_date').execute()
+        tasks = tasks_result.data or []
+        
+        # Get recently completed tasks
+        completed_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', True).order('last_completed', desc=True).limit(10).execute()
+        completed_tasks = completed_result.data or []
+        
+        # Categorize tasks
+        overdue = []
+        upcoming = []  # Due within next 30 days
+        future = []    # Due beyond 30 days
+        today = datetime.now().date()
+        next_month = today + timedelta(days=30)
+        
+        for task in tasks:
+            task_date = datetime.fromisoformat(task['next_due_date']).date()
+            if task_date < today:
+                overdue.append(task)
+            elif task_date <= next_month:
+                upcoming.append(task)
+            else:
+                future.append(task)
+        
+        return render_template('dashboard.html', 
+                             overdue_tasks=overdue, 
+                             upcoming_tasks=upcoming,
+                             future_tasks=future,
+                             completed_tasks=completed_tasks)
+                             
+    except Exception as e:
+        flash(f'Error loading dashboard: {str(e)}')
+        return render_template('dashboard.html', 
+                             overdue_tasks=[], 
+                             upcoming_tasks=[],
+                             future_tasks=[],
+                             completed_tasks=[])
 
 @app.route('/complete_task/<int:task_id>')
 def complete_task(task_id):
@@ -283,30 +281,30 @@ def complete_task(task_id):
         return redirect(url_for('login'))
     
     user_id = session['user_id']
-    conn = get_db_connection()
     
-    # Get task details
-    task = conn.execute(
-        'SELECT * FROM tasks WHERE id = ? AND user_id = ?', (task_id, user_id)
-    ).fetchone()
-    
-    if task:
-        today = datetime.now().date()
-        next_due = today + timedelta(days=task['frequency_days'])
+    try:
+        # Get task details
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
         
-        # Update the existing task: mark as completed, set completion date, and update next due date
-        conn.execute('''
-            UPDATE tasks 
-            SET is_completed = 1, 
-                last_completed = ?,
-                next_due_date = ?
-            WHERE id = ?
-        ''', (today, next_due, task_id))
-        
-        conn.commit()
-        flash(f'Task "{task["title"]}" completed! Next due: {next_due}')
+        if task_result.data:
+            task = task_result.data[0]
+            today = datetime.now().date()
+            next_due = today + timedelta(days=task['frequency_days'])
+            
+            # Update the existing task: mark as completed, set completion date, and update next due date
+            supabase.table('tasks').update({
+                'is_completed': True,
+                'last_completed': today.isoformat(),
+                'next_due_date': next_due.isoformat()
+            }).eq('id', task_id).execute()
+            
+            flash(f'Task "{task["title"]}" completed! Next due: {next_due}')
+        else:
+            flash('Task not found!')
+            
+    except Exception as e:
+        flash(f'Error completing task: {str(e)}')
     
-    conn.close()
     return redirect(url_for('dashboard'))
 
 @app.route('/reset_task/<int:task_id>')
@@ -316,28 +314,242 @@ def reset_task(task_id):
         return redirect(url_for('login'))
     
     user_id = session['user_id']
-    conn = get_db_connection()
     
-    # Get task details
-    task = conn.execute(
-        'SELECT * FROM tasks WHERE id = ? AND user_id = ?', (task_id, user_id)
-    ).fetchone()
-    
-    if task:
-        # Reset the task to active status
-        conn.execute('''
-            UPDATE tasks 
-            SET is_completed = 0,
-                last_completed = NULL
-            WHERE id = ?
-        ''', (task_id,))
+    try:
+        # Get task details
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
         
-        conn.commit()
-        flash(f'Task "{task["title"]}" has been reset to active status')
+        if task_result.data:
+            task = task_result.data[0]
+            
+            # Reset the task to active status
+            supabase.table('tasks').update({
+                'is_completed': False,
+                'last_completed': None
+            }).eq('id', task_id).execute()
+            
+            flash(f'Task "{task["title"]}" has been reset to active status')
+        else:
+            flash('Task not found!')
+            
+    except Exception as e:
+        flash(f'Error resetting task: {str(e)}')
     
-    conn.close()
     return redirect(url_for('dashboard'))
 
+# API Endpoints for frontend
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json()
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not username or not email or not password:
+        return jsonify({'error': 'All fields are required'}), 400
+    
+    try:
+        # Check if user already exists
+        existing_user = supabase.table('users').select('id').or_(
+            f'username.eq.{username},email.eq.{email}'
+        ).execute()
+        
+        if existing_user.data:
+            return jsonify({'error': 'Username or email already exists'}), 400
+        
+        # Create new user
+        password_hash = generate_password_hash(password)
+        result = supabase.table('users').insert({
+            'username': username,
+            'email': email,
+            'password_hash': password_hash
+        }).execute()
+        
+        if result.data:
+            user = result.data[0]
+            token = jwt.encode({
+                'user_id': user['id'],
+                'exp': datetime.utcnow() + timedelta(days=30)
+            }, app.secret_key, algorithm='HS256')
+            
+            return jsonify({
+                'token': token,
+                'user': {'id': user['id'], 'username': user['username']}
+            })
+        else:
+            return jsonify({'error': 'Registration failed'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    
+    try:
+        result = supabase.table('users').select('*').eq('username', username).execute()
+        
+        if result.data and check_password_hash(result.data[0]['password_hash'], password):
+            user = result.data[0]
+            token = jwt.encode({
+                'user_id': user['id'],
+                'exp': datetime.utcnow() + timedelta(days=30)
+            }, app.secret_key, algorithm='HS256')
+            
+            return jsonify({
+                'token': token,
+                'user': {'id': user['id'], 'username': user['username']}
+            })
+        else:
+            return jsonify({'error': 'Invalid username or password'}), 401
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard')
+@token_required
+def api_dashboard(current_user_id):
+    try:
+        # Reactivate tasks that are now due
+        reactivate_due_tasks(current_user_id)
+        
+        # Get all active tasks
+        tasks_result = supabase.table('tasks').select('*').eq('user_id', current_user_id).eq('is_completed', False).order('next_due_date').execute()
+        tasks = tasks_result.data or []
+        
+        # Get recently completed tasks
+        completed_result = supabase.table('tasks').select('*').eq('user_id', current_user_id).eq('is_completed', True).order('last_completed', desc=True).limit(10).execute()
+        completed_tasks = completed_result.data or []
+        
+        # Categorize tasks
+        overdue = []
+        upcoming = []
+        future = []
+        today = datetime.now().date()
+        next_month = today + timedelta(days=30)
+        
+        for task in tasks:
+            task_date = datetime.fromisoformat(task['next_due_date']).date()
+            if task_date < today:
+                overdue.append(task)
+            elif task_date <= next_month:
+                upcoming.append(task)
+            else:
+                future.append(task)
+        
+        return jsonify({
+            'overdue_tasks': overdue,
+            'upcoming_tasks': upcoming,
+            'future_tasks': future,
+            'completed_tasks': completed_tasks
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/complete_task/<int:task_id>', methods=['POST'])
+@token_required
+def api_complete_task(current_user_id, task_id):
+    try:
+        # Get task details
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        if task_result.data:
+            task = task_result.data[0]
+            today = datetime.now().date()
+            next_due = today + timedelta(days=task['frequency_days'])
+            
+            # Update the task
+            supabase.table('tasks').update({
+                'is_completed': True,
+                'last_completed': today.isoformat(),
+                'next_due_date': next_due.isoformat()
+            }).eq('id', task_id).execute()
+            
+            return jsonify({'message': f'Task "{task["title"]}" completed! Next due: {next_due}'})
+        else:
+            return jsonify({'error': 'Task not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reset_task/<int:task_id>', methods=['POST'])
+@token_required
+def api_reset_task(current_user_id, task_id):
+    try:
+        # Get task details
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', current_user_id).execute()
+        
+        if task_result.data:
+            task = task_result.data[0]
+            
+            # Reset the task
+            supabase.table('tasks').update({
+                'is_completed': False,
+                'last_completed': None
+            }).eq('id', task_id).execute()
+            
+            return jsonify({'message': f'Task "{task["title"]}" has been reset to active status'})
+        else:
+            return jsonify({'error': 'Task not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/questionnaire', methods=['POST'])
+@token_required
+def api_questionnaire(current_user_id):
+    try:
+        data = request.get_json()
+        features = {
+            'has_hvac': data.get('has_hvac', False),
+            'has_gutters': data.get('has_gutters', False),
+            'has_dishwasher': data.get('has_dishwasher', False),
+            'has_smoke_detectors': data.get('has_smoke_detectors', False),
+            'has_water_heater': data.get('has_water_heater', False),
+        }
+        
+        # Check if features already exist
+        existing = supabase.table('home_features').select('id').eq('user_id', current_user_id).execute()
+        
+        if existing.data:
+            # Update existing features
+            supabase.table('home_features').update({
+                **features,
+                'user_id': current_user_id
+            }).eq('user_id', current_user_id).execute()
+        else:
+            # Insert new features
+            supabase.table('home_features').insert({
+                'user_id': current_user_id,
+                **features
+            }).execute()
+        
+        # Generate tasks based on features
+        generate_tasks_for_user(current_user_id, features)
+        
+        return jsonify({'message': 'Home features saved and tasks generated!'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/home_features')
+@token_required
+def api_home_features(current_user_id):
+    try:
+        result = supabase.table('home_features').select('*').eq('user_id', current_user_id).execute()
+        
+        if result.data:
+            features = result.data[0]
+            return jsonify({'features': features})
+        else:
+            return jsonify({'features': None})
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') != 'production')
