@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'https://your-render-app.onrender.com'; // Replace with your Render URL
+const API_BASE_URL = 'https://upkeep-as08.onrender.com'; // Replace with your Render URL
 
 // State management
 let currentUser = null;
