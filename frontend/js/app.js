@@ -4,6 +4,8 @@ const API_BASE_URL = ''; // Same-origin when SPA is served by Flask
 // State management
 let currentUser = null;
 let authToken = null;
+let tasksCache = {}; // id -> task for editing
+let editingTaskId = null;
 
 // DOM elements
 const authSection = document.getElementById('auth-section');
@@ -91,7 +93,7 @@ function openHistoryModal(history) {
             </div>
         `).join('');
     }
-    modal.style.display = 'block';
+    modal.style.display = 'flex';
 }
 
 function closeHistoryModal() {
@@ -141,6 +143,12 @@ function setupEventListeners() {
     if (closeHistory) {
         closeHistory.addEventListener('click', closeHistoryModal);
     }
+
+    // Edit modal
+    const editCancel = document.getElementById('edit-cancel');
+    const editSave = document.getElementById('edit-save');
+    if (editCancel) editCancel.addEventListener('click', closeEditModal);
+    if (editSave) editSave.addEventListener('click', saveEditTask);
 }
 
 // Auth functions
@@ -306,6 +314,9 @@ function renderTaskSection(containerId, tasks, taskType) {
         return;
     }
     
+    // cache
+    tasks.forEach(t => { tasksCache[t.id] = t; });
+
     container.innerHTML = tasks.map(task => `
         <div class="task ${taskType}">
             <div class="task-content">
@@ -326,10 +337,64 @@ function renderTaskSection(containerId, tasks, taskType) {
                         <button class="snooze-btn" onclick="snoozeTask(${task.id})">Snooze</button>
                     `
                 }
+                <button class="edit-btn" onclick="openEditModal(${task.id})">Edit</button>
                 <button class="history-btn" onclick="viewHistory(${task.id})">History</button>
             </div>
         </div>
     `).join('');
+}
+
+// Edit modal functions
+function openEditModal(taskId) {
+    const task = tasksCache[taskId];
+    if (!task) return;
+    editingTaskId = taskId;
+    document.getElementById('edit-title').value = task.title || '';
+    document.getElementById('edit-description').value = task.description || '';
+    document.getElementById('edit-frequency').value = task.frequency_days || '';
+    document.getElementById('edit-priority').value = task.priority || '';
+    document.getElementById('edit-category').value = task.category || '';
+    const modal = document.getElementById('edit-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('edit-modal');
+    if (modal) modal.style.display = 'none';
+    editingTaskId = null;
+}
+
+async function saveEditTask() {
+    if (!editingTaskId) return;
+    const title = document.getElementById('edit-title').value.trim();
+    const description = document.getElementById('edit-description').value.trim();
+    const frequency = parseInt(document.getElementById('edit-frequency').value, 10);
+    const priority = document.getElementById('edit-priority').value || null;
+    const category = document.getElementById('edit-category').value.trim() || null;
+    if (!title || !frequency || frequency <= 0) {
+        showFlashMessage('Please provide a valid title and frequency.', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/tasks/${editingTaskId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ title, description, frequency_days: frequency, priority, category })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showFlashMessage('Task updated');
+            closeEditModal();
+            loadDashboardData();
+        } else {
+            showFlashMessage(data.error || 'Failed to update task', 'error');
+        }
+    } catch (e) {
+        showFlashMessage('Network error', 'error');
+    }
 }
 
 async function completeTask(taskId) {

@@ -133,14 +133,56 @@
         </div>
 
         <div id="flash-messages" class="flash-messages"></div>
-        <!-- Simple modal for history -->
+        <!-- History Modal -->
         <div id="history-modal" class="modal" style="display:none;">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Task History</h3>
                     <button id="close-history">Close</button>
                 </div>
-                <div id="history-body"></div>
+                <div id="history-body" class="modal-body"></div>
+            </div>
+        </div>
+
+        <!-- Edit Task Modal -->
+        <div id="edit-modal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit Task</h3>
+                    <button id="edit-cancel">Close</button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-form">
+                        <div class="form-row">
+                            <label for="edit-title">Title</label>
+                            <input type="text" id="edit-title" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="edit-description">Description</label>
+                            <textarea id="edit-description" rows="3"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <label for="edit-frequency">Frequency (days)</label>
+                            <input type="number" id="edit-frequency" min="1" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="edit-priority">Priority</label>
+                            <select id="edit-priority">
+                                <option value="">None</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="edit-category">Category</label>
+                            <input type="text" id="edit-category" />
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-actions">
+                    <button id="edit-save">Save</button>
+                </div>
             </div>
         </div>
     </div>

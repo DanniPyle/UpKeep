@@ -4,6 +4,68 @@
     box-sizing: border-box;
 }
 
+/* Modal (centered overlay) */
+.modal {
+    position: fixed;
+    inset: 0;
+    display: none; /* toggled to flex when open */
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1100;
+    padding: 20px;
+}
+
+.modal .modal-content {
+    background: #fff;
+    width: 100%;
+    max-width: 560px;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    overflow: hidden;
+}
+
+.modal .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal .modal-body {
+    padding: 16px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.modal .modal-actions {
+    padding: 12px 16px;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.badge.priority.low { background: #e7f3ff; color: #0b5ed7; }
+.badge.priority.medium { background: #fff3cd; color: #664d03; }
+.badge.priority.high { background: #fde2e1; color: #b42318; }
+
+/* Forms inside modal */
+.modal .form-row {
+    margin-bottom: 12px;
+}
+.modal .form-row label { font-weight: 600; margin-bottom: 6px; display:block; }
+.modal .form-row input,
+.modal .form-row select,
+.modal .form-row textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
 body {
     font-family: Arial, sans-serif;
     background-color: #f5f5f5;
