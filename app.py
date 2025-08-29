@@ -218,7 +218,9 @@ def generate_tasks_for_user(user_id, features):
                         'description': task_template['description'],
                         'frequency_days': task_template['frequency_days'],
                         'next_due_date': next_due.date().isoformat(),
-                        'is_completed': False
+                        'is_completed': False,
+                        'priority': None,
+                        'category': None
                     })
         
         if tasks_to_insert:
@@ -400,6 +402,64 @@ def get_task(task_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/task_history/<int:task_id>')
+@token_required
+def api_task_history(current_user_id, task_id):
+    """Return task history entries for a task"""
+    try:
+        # Ensure task belongs to user
+        task_result = supabase.table('tasks').select('id').eq('id', task_id).eq('user_id', current_user_id).execute()
+        if not task_result.data:
+            return jsonify({'error': 'Task not found'}), 404
+        hist = supabase.table('task_history').select('*').eq('task_id', task_id).eq('user_id', current_user_id).order('created_at', desc=True).execute()
+        return jsonify({'history': hist.data or []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/snooze_task/<int:task_id>', methods=['POST'])
+@token_required
+def api_snooze_task(current_user_id, task_id):
+    """Postpone a task by N days without marking it completed"""
+    try:
+        data = request.get_json() or {}
+        days = data.get('days')
+        try:
+            days = int(days)
+            if days <= 0:
+                return jsonify({'error': 'days must be a positive integer'}), 400
+        except Exception:
+            return jsonify({'error': 'days must be a positive integer'}), 400
+
+        # Get task
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', current_user_id).execute()
+        if not task_result.data:
+            return jsonify({'error': 'Task not found'}), 404
+        task = task_result.data[0]
+
+        # Compute new next_due_date
+        current_next_due = datetime.fromisoformat(task['next_due_date']).date()
+        new_next_due = current_next_due + timedelta(days=days)
+
+        supabase.table('tasks').update({
+            'next_due_date': new_next_due.isoformat()
+        }).eq('id', task_id).execute()
+
+        # Record history
+        try:
+            supabase.table('task_history').insert({
+                'user_id': current_user_id,
+                'task_id': task_id,
+                'action': 'snoozed',
+                'delta_days': days,
+                'created_at': datetime.utcnow().isoformat()
+            }).execute()
+        except Exception as _:
+            pass
+
+        return jsonify({'message': f'Task "{task["title"]}" snoozed by {days} days', 'next_due_date': new_next_due.isoformat()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/edit_task/<int:task_id>', methods=['POST'])
 def edit_task(task_id):
     if 'user_id' not in session:
@@ -544,11 +604,32 @@ def api_dashboard(current_user_id):
     try:
         # Reactivate tasks that are now due
         reactivate_due_tasks(current_user_id)
-        
-        # Get all active tasks
-        tasks_result = supabase.table('tasks').select('*').eq('user_id', current_user_id).eq('is_completed', False).order('next_due_date').execute()
+
+        # Filters
+        search = request.args.get('search')
+        category = request.args.get('category')
+        priority = request.args.get('priority')
+        min_freq = request.args.get('min_freq', type=int)
+        max_freq = request.args.get('max_freq', type=int)
+
+        # Build query with filters
+        query = supabase.table('tasks').select('*').eq('user_id', current_user_id).eq('is_completed', False)
+        if category:
+            query = query.eq('category', category)
+        if priority:
+            query = query.eq('priority', priority)
+        if min_freq is not None:
+            query = query.gte('frequency_days', min_freq)
+        if max_freq is not None:
+            query = query.lte('frequency_days', max_freq)
+        if search:
+            like = f"%{search}%"
+            # OR ilike across title and description
+            query = query.or_(f"title.ilike.{like},description.ilike.{like}")
+
+        tasks_result = query.order('next_due_date').execute()
         tasks = tasks_result.data or []
-        
+
         # Get recently completed tasks
         completed_result = supabase.table('tasks').select('*').eq('user_id', current_user_id).eq('is_completed', True).order('last_completed', desc=True).limit(10).execute()
         completed_tasks = completed_result.data or []
@@ -597,6 +678,18 @@ def api_complete_task(current_user_id, task_id):
                 'last_completed': today.isoformat(),
                 'next_due_date': next_due.isoformat()
             }).eq('id', task_id).execute()
+            
+            # Record history
+            try:
+                supabase.table('task_history').insert({
+                    'user_id': current_user_id,
+                    'task_id': task_id,
+                    'action': 'completed',
+                    'delta_days': task['frequency_days'],
+                    'created_at': datetime.utcnow().isoformat()
+                }).execute()
+            except Exception as _:
+                pass
             
             return jsonify({'message': f'Task "{task["title"]}" completed! Next due: {next_due}'})
         else:
@@ -689,6 +782,8 @@ def api_create_task(current_user_id):
         title = data.get('title')
         description = data.get('description', '')
         frequency_days = data.get('frequency_days')
+        priority = data.get('priority')  # optional: 'low' | 'medium' | 'high'
+        category = data.get('category')  # optional string
         
         if not title or not frequency_days:
             return jsonify({'error': 'Title and frequency are required'}), 400
@@ -710,7 +805,9 @@ def api_create_task(current_user_id):
             'description': description,
             'frequency_days': frequency_days,
             'next_due_date': next_due.date().isoformat(),
-            'is_completed': False
+            'is_completed': False,
+            'priority': priority,
+            'category': category
         }).execute()
         
         if result.data:
@@ -751,7 +848,9 @@ def api_update_task(current_user_id, task_id):
         result = supabase.table('tasks').update({
             'title': title,
             'description': description,
-            'frequency_days': frequency_days
+            'frequency_days': frequency_days,
+            'priority': priority,
+            'category': category
         }).eq('id', task_id).eq('user_id', current_user_id).execute()
         
         if result.data:

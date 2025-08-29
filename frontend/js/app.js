@@ -28,6 +28,74 @@ function initializeApp() {
     } else {
         showAuthSection();
     }
+
+async function snoozeTask(taskId) {
+    const daysStr = prompt('Snooze by how many days?');
+    if (!daysStr) return;
+    const days = parseInt(daysStr, 10);
+    if (isNaN(days) || days <= 0) {
+        showFlashMessage('Please enter a positive number of days', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ days })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showFlashMessage(data.message || 'Task snoozed');
+            loadDashboardData();
+        } else {
+            showFlashMessage(data.error || 'Failed to snooze task', 'error');
+        }
+    } catch (e) {
+        showFlashMessage('Network error', 'error');
+    }
+}
+
+async function viewHistory(taskId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/task_history/${taskId}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await response.json();
+        if (response.ok) {
+            openHistoryModal(data.history || []);
+        } else {
+            showFlashMessage(data.error || 'Failed to load history', 'error');
+        }
+    } catch (e) {
+        showFlashMessage('Network error', 'error');
+    }
+}
+
+function openHistoryModal(history) {
+    const modal = document.getElementById('history-modal');
+    const body = document.getElementById('history-body');
+    if (!modal || !body) return;
+    if (!history.length) {
+        body.innerHTML = '<p>No history yet.</p>';
+    } else {
+        body.innerHTML = history.map(h => `
+            <div class="hist-row">
+                <span class="hist-time">${formatDate(h.created_at)}</span>
+                <span class="hist-action">${h.action}</span>
+                ${h.delta_days ? `<span class="hist-delta">${h.delta_days} days</span>` : ''}
+            </div>
+        `).join('');
+    }
+    modal.style.display = 'block';
+}
+
+function closeHistoryModal() {
+    const modal = document.getElementById('history-modal');
+    if (modal) modal.style.display = 'none';
+}
 }
 
 function setupEventListeners() {
@@ -47,6 +115,31 @@ function setupEventListeners() {
     
     // Questionnaire
     document.getElementById('questionnaire-form').addEventListener('submit', handleQuestionnaire);
+
+    // Filters
+    const applyBtn = document.getElementById('apply-filters');
+    const clearBtn = document.getElementById('clear-filters');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+            loadDashboardData();
+        });
+    }
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            document.getElementById('filter-search').value = '';
+            document.getElementById('filter-category').value = '';
+            document.getElementById('filter-priority').value = '';
+            document.getElementById('filter-min-freq').value = '';
+            document.getElementById('filter-max-freq').value = '';
+            loadDashboardData();
+        });
+    }
+
+    // History modal
+    const closeHistory = document.getElementById('close-history');
+    if (closeHistory) {
+        closeHistory.addEventListener('click', closeHistoryModal);
+    }
 }
 
 // Auth functions
@@ -166,7 +259,20 @@ function showQuestionnaire() {
 // Dashboard functions
 async function loadDashboardData() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/dashboard`, {
+        // Build query params from filters
+        const params = new URLSearchParams();
+        const q = document.getElementById('filter-search');
+        const cat = document.getElementById('filter-category');
+        const pri = document.getElementById('filter-priority');
+        const minF = document.getElementById('filter-min-freq');
+        const maxF = document.getElementById('filter-max-freq');
+        if (q && q.value) params.set('search', q.value);
+        if (cat && cat.value) params.set('category', cat.value);
+        if (pri && pri.value) params.set('priority', pri.value);
+        if (minF && minF.value) params.set('min_freq', minF.value);
+        if (maxF && maxF.value) params.set('max_freq', maxF.value);
+
+        const response = await fetch(`${API_BASE_URL}/api/dashboard${params.toString() ? `?${params.toString()}` : ''}` , {
             headers: {
                 'Authorization': `Bearer ${authToken}`
             }
@@ -204,13 +310,22 @@ function renderTaskSection(containerId, tasks, taskType) {
             <div class="task-content">
                 <div class="task-title">${task.title}</div>
                 <div class="task-description">${task.description}</div>
+                <div class="task-meta">
+                    <span class="badge freq">Every ${task.frequency_days} days</span>
+                    ${task.category ? `<span class="badge category">${task.category}</span>` : ''}
+                    ${task.priority ? `<span class="badge priority ${task.priority}">${task.priority}</span>` : ''}
+                </div>
                 <div class="task-date">Due: ${formatDate(task.next_due_date)}</div>
             </div>
             <div class="task-actions">
                 ${taskType === 'completed' 
                     ? `<button class="reset-btn" onclick="resetTask(${task.id})">Reset</button>`
-                    : `<button class="complete-btn" onclick="completeTask(${task.id})">Complete</button>`
+                    : `
+                        <button class="complete-btn" onclick="completeTask(${task.id})">Complete</button>
+                        <button class="snooze-btn" onclick="snoozeTask(${task.id})">Snooze</button>
+                    `
                 }
+                <button class="history-btn" onclick="viewHistory(${task.id})">History</button>
             </div>
         </div>
     `).join('');

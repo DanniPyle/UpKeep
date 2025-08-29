@@ -57,6 +57,21 @@
                 </div>
 
                 <h1>Dashboard</h1>
+                <!-- Filters -->
+                <div id="filters" class="filters">
+                    <input type="text" id="filter-search" placeholder="Search title/description">
+                    <input type="text" id="filter-category" placeholder="Category">
+                    <select id="filter-priority">
+                        <option value="">All priorities</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                    <input type="number" id="filter-min-freq" placeholder="Min days" min="0">
+                    <input type="number" id="filter-max-freq" placeholder="Max days" min="0">
+                    <button id="apply-filters">Apply</button>
+                    <button id="clear-filters">Clear</button>
+                </div>
                 
                 <div id="tasks-container">
                     <div class="task-section">
@@ -118,6 +133,16 @@
         </div>
 
         <div id="flash-messages" class="flash-messages"></div>
+        <!-- Simple modal for history -->
+        <div id="history-modal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Task History</h3>
+                    <button id="close-history">Close</button>
+                </div>
+                <div id="history-body"></div>
+            </div>
+        </div>
     </div>
 
     <script src="js/app.js"></script>
