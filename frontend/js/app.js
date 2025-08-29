@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'https://upkeep-as08.onrender.com'; // Replace with your Render URL
+const API_BASE_URL = ''; // Same-origin when SPA is served by Flask
 
 // State management
 let currentUser = null;

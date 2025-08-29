@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from supabase import create_client
@@ -49,7 +49,8 @@ def token_required(f):
 TASK_TEMPLATES = {
     'has_hvac': [
         {'title': 'Replace HVAC Filter', 'description': 'Replace air filter for better air quality and efficiency', 'frequency_days': 30},
-        {'title': 'Schedule HVAC Maintenance', 'description': 'Annual professional HVAC system inspection and cleaning', 'frequency_days': 365}
+        {'title': 'Vacuum out HVAC return grills', 'description': 'Use vacuum brush attachment to clean out debris', 'frequency_days': 180},
+        {'title': 'Add vinegar to HVAC system', 'description': 'Add 1/4 cup distiled white vinegar to drain pump in HVAC to prevent mold and bacteria', 'frequency_days': 30}
     ],
     'has_gutters': [
         {'title': 'Clean Gutters', 'description': 'Remove leaves and debris from gutters and downspouts', 'frequency_days': 90},
@@ -794,6 +795,17 @@ def api_get_task(current_user_id, task_id):
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# SPA static file serving (frontend/) with history API fallback
+@app.route('/app/')
+@app.route('/app/<path:path>')
+def spa(path='index.html'):
+    root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
+    file_path = os.path.join(root_dir, path)
+    if os.path.isfile(file_path):
+        return send_from_directory(root_dir, path)
+    # History API fallback to index.html for client-side routing
+    return send_from_directory(root_dir, 'index.html')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
