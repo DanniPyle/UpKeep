@@ -623,7 +623,8 @@ def api_dashboard(current_user_id):
         if max_freq is not None:
             query = query.lte('frequency_days', max_freq)
         if search:
-            like = f"%{search}%"
+            # PostgREST ilike uses '*' wildcards, not SQL '%'
+            like = f"*{search}*"
             # OR ilike across title and description
             query = query.or_(f"title.ilike.{like},description.ilike.{like}")
 
@@ -827,6 +828,8 @@ def api_update_task(current_user_id, task_id):
         title = data.get('title')
         description = data.get('description', '')
         frequency_days = data.get('frequency_days')
+        priority = data.get('priority')
+        category = data.get('category')
         
         if not title or not frequency_days:
             return jsonify({'error': 'Title and frequency are required'}), 400

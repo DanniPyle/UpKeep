@@ -29,6 +29,8 @@ function initializeApp() {
         showAuthSection();
     }
 
+}
+
 async function snoozeTask(taskId) {
     const daysStr = prompt('Snooze by how many days?');
     if (!daysStr) return;
@@ -95,7 +97,6 @@ function openHistoryModal(history) {
 function closeHistoryModal() {
     const modal = document.getElementById('history-modal');
     if (modal) modal.style.display = 'none';
-}
 }
 
 function setupEventListeners() {
