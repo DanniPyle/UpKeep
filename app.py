@@ -7,6 +7,8 @@ import os
 import jwt
 from functools import wraps
 from dotenv import load_dotenv
+import csv
+import io
 
 # Load environment variables
 load_dotenv()
@@ -69,6 +71,303 @@ TASK_TEMPLATES = {
         {'title': 'Check Water Heater Temperature', 'description': 'Ensure water heater is set to 120°F (49°C)', 'frequency_days': 180}
     ]
 }
+
+# --- Catalog import/validation constants & helpers ---
+ALLOWED_FEATURE_KEYS = {
+    'has_hvac', 'has_gutters', 'has_dishwasher', 'has_smoke_detectors', 'has_water_heater'
+}
+
+PRIORITY_VALUES = {'low', 'medium', 'high'}
+
+# Default meteorological season starts (Northern hemisphere). Future: user-defined seasons.
+DEFAULT_SEASON_STARTS = {
+    'winter': (12, 1),
+    'spring': (3, 1),
+    'summer': (6, 1),
+    'autumn': (9, 1),
+}
+
+EXPECTED_COLUMNS = [
+    'task_key', 'title', 'description', 'frequency_days', 'category', 'priority',
+    'feature_requirements', 'start_offset_days', 'seasonal', 'seasonal_anchor_type',
+    'season_code', 'season_anchor_month', 'season_anchor_day', 'overlap_group',
+    'variant_rank', 'safety_critical', 'notes'
+]
+
+def _parse_bool(val, default=None):
+    if val is None:
+        return default
+    s = str(val).strip().lower()
+    if s in ('true', '1', 'yes', 'y'):
+        return True
+    if s in ('false', '0', 'no', 'n'):
+        return False
+    return default
+
+def _parse_int(val, default=None):
+    try:
+        if val is None or str(val).strip() == '':
+            return default
+        return int(str(val).strip())
+    except Exception:
+        return default
+
+def _parse_feature_requirements(s):
+    """Parse semicolon-separated key=value into dict with boolean values.
+    Returns (req_dict, errors)
+    """
+    req = {}
+    errors = []
+    if not s or str(s).strip() == '':
+        return req, errors
+    parts = [p.strip() for p in str(s).split(';') if p.strip()]
+    for part in parts:
+        if '=' not in part:
+            errors.append(f"invalid requirement '{part}' (expected key=value)")
+            continue
+        key, value = part.split('=', 1)
+        key = key.strip()
+        value = value.strip()
+        if key not in ALLOWED_FEATURE_KEYS:
+            errors.append(f"unknown feature key '{key}'")
+            continue
+        b = _parse_bool(value, default=None)
+        if b is None:
+            errors.append(f"invalid boolean for '{key}' -> '{value}'")
+            continue
+        req[key] = b
+    return req, errors
+
+def _valid_month_day(month, day):
+    try:
+        # Use leap year to allow Feb 29 in validation
+        datetime(year=2024, month=month, day=day)
+        return True
+    except Exception:
+        return False
+
+def _validate_catalog_row(row):
+    """Return list of issues for this row (empty if valid)."""
+    issues = []
+
+    task_key = (row.get('task_key') or '').strip()
+    title = (row.get('title') or '').strip()
+    if not task_key:
+        issues.append('task_key is required')
+    if not title:
+        issues.append('title is required')
+
+    priority = (row.get('priority') or '').strip().lower()
+    if priority and priority not in PRIORITY_VALUES:
+        issues.append(f"priority must be one of {sorted(PRIORITY_VALUES)}")
+
+    seasonal = _parse_bool(row.get('seasonal'), default=False)
+    seasonal_anchor_type = (row.get('seasonal_anchor_type') or '').strip().lower()
+    season_code = (row.get('season_code') or '').strip().lower()
+    season_anchor_month = _parse_int(row.get('season_anchor_month'), default=None)
+    season_anchor_day = _parse_int(row.get('season_anchor_day'), default=None)
+
+    freq = _parse_int(row.get('frequency_days'), default=None)
+    if not seasonal:
+        if freq is None or freq < 1:
+            issues.append('frequency_days must be an integer >= 1 for non-seasonal tasks')
+    else:
+        if seasonal_anchor_type not in ('season_start', 'fixed_date'):
+            issues.append("seasonal_anchor_type must be 'season_start' or 'fixed_date' when seasonal=true")
+        if seasonal_anchor_type == 'season_start':
+            if season_code not in DEFAULT_SEASON_STARTS:
+                issues.append("season_code must be one of winter|spring|summer|autumn when seasonal_anchor_type=season_start")
+        if seasonal_anchor_type == 'fixed_date':
+            if season_anchor_month is None or season_anchor_day is None:
+                issues.append('season_anchor_month and season_anchor_day are required when seasonal_anchor_type=fixed_date')
+            else:
+                if not _valid_month_day(season_anchor_month, season_anchor_day):
+                    issues.append('season_anchor_month/day is not a valid calendar date')
+
+    start_offset = _parse_int(row.get('start_offset_days'), default=None)
+    if start_offset is not None and start_offset < 0:
+        issues.append('start_offset_days must be >= 0')
+
+    variant_rank = _parse_int(row.get('variant_rank'), default=None)
+    if row.get('overlap_group') and (variant_rank is None or variant_rank < 1):
+        issues.append('variant_rank must be an integer >= 1 when overlap_group is provided')
+
+    safety = row.get('safety_critical')
+    if safety not in (None, '') and _parse_bool(safety, default=None) is None:
+        issues.append('safety_critical must be true/false')
+
+    # feature requirements
+    _, req_errors = _parse_feature_requirements(row.get('feature_requirements'))
+    issues.extend(req_errors)
+
+    return issues
+
+def _next_anchor_date(month, day, base_date=None):
+    if base_date is None:
+        base_date = datetime.now().date()
+    year = base_date.year
+    try:
+        candidate = datetime(year=year, month=month, day=day).date()
+    except Exception:
+        # Should not happen if validated
+        candidate = base_date
+    if candidate < base_date:
+        candidate = datetime(year=year + 1, month=month, day=day).date()
+    return candidate
+
+def _compute_next_due_date(row, today=None):
+    if today is None:
+        today = datetime.now().date()
+    seasonal = _parse_bool(row.get('seasonal'), default=False)
+    if seasonal:
+        anchor_type = (row.get('seasonal_anchor_type') or '').strip().lower()
+        if anchor_type == 'fixed_date':
+            m = _parse_int(row.get('season_anchor_month'))
+            d = _parse_int(row.get('season_anchor_day'))
+            if m and d:
+                return _next_anchor_date(m, d, today)
+        elif anchor_type == 'season_start':
+            code = (row.get('season_code') or '').strip().lower()
+            if code in DEFAULT_SEASON_STARTS:
+                m, d = DEFAULT_SEASON_STARTS[code]
+                return _next_anchor_date(m, d, today)
+        # Fallback
+        freq = max(1, _parse_int(row.get('frequency_days'), default=365) or 365)
+        return today + timedelta(days=freq)
+    # Non-seasonal
+    offset = _parse_int(row.get('start_offset_days'), default=None)
+    if offset is not None:
+        return today + timedelta(days=max(0, offset))
+    freq = max(1, _parse_int(row.get('frequency_days'), default=30) or 30)
+    return today + timedelta(days=freq)
+
+def _read_csv_upload(file_storage):
+    if not file_storage:
+        raise ValueError('No file provided')
+    content = file_storage.read()
+    try:
+        text = content.decode('utf-8-sig')
+    except Exception:
+        text = content.decode('utf-8', errors='ignore')
+    sio = io.StringIO(text)
+    reader = csv.DictReader(sio)
+    rows = [dict(r) for r in reader]
+    headers = reader.fieldnames or []
+    return headers, rows
+
+def _filter_rows_by_features(rows, features):
+    """Return only rows whose feature_requirements all match the user's features."""
+    kept = []
+    for r in rows:
+        req, req_errors = _parse_feature_requirements(r.get('feature_requirements'))
+        if req_errors:
+            # invalid reqs -> drop in importer (validator will report)
+            continue
+        ok = True
+        for k, v in req.items():
+            if bool(features.get(k, False)) != bool(v):
+                ok = False
+                break
+        if ok:
+            kept.append(r)
+    return kept
+
+def _resolve_overlaps(rows):
+    by_group = {}
+    for r in rows:
+        group = (r.get('overlap_group') or '').strip()
+        if not group:
+            # Use unique key per row when no group
+            key = f"__unique__::{r.get('task_key') or r.get('title')}::{id(r)}"
+            by_group[key] = r
+            continue
+        rank = _parse_int(r.get('variant_rank'), default=999999)
+        cur = by_group.get(group)
+        if cur is None or _parse_int(cur.get('variant_rank'), default=999999) > rank:
+            by_group[group] = r
+    return list(by_group.values())
+
+def _insert_tasks_for_user(user_id, rows):
+    to_insert = []
+    today = datetime.now().date()
+    for r in rows:
+        title = (r.get('title') or '').strip()
+        if not title:
+            continue
+        description = (r.get('description') or '').strip()
+        category = (r.get('category') or '').strip() or None
+        priority = (r.get('priority') or '').strip().lower() or None
+        if priority and priority not in PRIORITY_VALUES:
+            priority = None
+
+        # frequency: ensure integer, default to 30 for non-seasonal, 365 for seasonal
+        seasonal = _parse_bool(r.get('seasonal'), default=False)
+        default_freq = 365 if seasonal else 30
+        frequency_days = _parse_int(r.get('frequency_days'), default=default_freq) or default_freq
+        if frequency_days < 1:
+            frequency_days = default_freq
+
+        next_due = _compute_next_due_date(r, today)
+
+        to_insert.append({
+            'user_id': user_id,
+            'title': title,
+            'description': description,
+            'frequency_days': frequency_days,
+            'next_due_date': next_due.isoformat(),
+            'is_completed': False,
+            'priority': priority,
+            'category': category
+        })
+
+    if to_insert:
+        supabase.table('tasks').insert(to_insert).execute()
+
+def seed_tasks_from_catalog_rows(user_id, features, all_rows):
+    """Clear existing tasks and seed from provided catalog rows, filtered & overlap-resolved."""
+    # Clear existing tasks
+    supabase.table('tasks').delete().eq('user_id', user_id).execute()
+    filtered = _filter_rows_by_features(all_rows, features)
+    resolved = _resolve_overlaps(filtered)
+    _insert_tasks_for_user(user_id, resolved)
+
+def seed_tasks_from_static_catalog_or_templates(user_id, features):
+    """If a static CSV catalog exists, seed from it; otherwise use TASK_TEMPLATES."""
+    try:
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        static_catalog = os.path.join(root_dir, 'static', 'tasks_catalog.csv')
+        if os.path.isfile(static_catalog):
+            with open(static_catalog, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                rows = [dict(r) for r in reader]
+            seed_tasks_from_catalog_rows(user_id, features, rows)
+            return True
+    except Exception as e:
+        print(f"Error seeding from static catalog: {e}")
+    
+    # Fallback to existing templates
+    try:
+        tasks_to_insert = []
+        for feature, has_feature in features.items():
+            if has_feature and feature in TASK_TEMPLATES:
+                for task_template in TASK_TEMPLATES[feature]:
+                    next_due = datetime.now() + timedelta(days=task_template['frequency_days'])
+                    tasks_to_insert.append({
+                        'user_id': user_id,
+                        'title': task_template['title'],
+                        'description': task_template['description'],
+                        'frequency_days': task_template['frequency_days'],
+                        'next_due_date': next_due.date().isoformat(),
+                        'is_completed': False,
+                        'priority': None,
+                        'category': None
+                    })
+        if tasks_to_insert:
+            supabase.table('tasks').insert(tasks_to_insert).execute()
+        return True
+    except Exception as e:
+        print(f"Error generating tasks from templates: {e}")
+        return False
 
 def reactivate_due_tasks(user_id):
     """Reactivate completed tasks that are now due"""
@@ -203,29 +502,10 @@ def questionnaire():
 
 def generate_tasks_for_user(user_id, features):
     try:
-        # Clear existing tasks for this user
-        supabase.table('tasks').delete().eq('user_id', user_id).execute()
-        
-        # Generate tasks based on features
-        tasks_to_insert = []
-        for feature, has_feature in features.items():
-            if has_feature and feature in TASK_TEMPLATES:
-                for task_template in TASK_TEMPLATES[feature]:
-                    next_due = datetime.now() + timedelta(days=task_template['frequency_days'])
-                    tasks_to_insert.append({
-                        'user_id': user_id,
-                        'title': task_template['title'],
-                        'description': task_template['description'],
-                        'frequency_days': task_template['frequency_days'],
-                        'next_due_date': next_due.date().isoformat(),
-                        'is_completed': False,
-                        'priority': None,
-                        'category': None
-                    })
-        
-        if tasks_to_insert:
-            supabase.table('tasks').insert(tasks_to_insert).execute()
-            
+        # Primary: seed from static catalog if present, else fallback to templates
+        seeded = seed_tasks_from_static_catalog_or_templates(user_id, features)
+        if not seeded:
+            print('No tasks seeded (catalog and templates both failed).')
     except Exception as e:
         print(f"Error generating tasks: {e}")
 
@@ -399,6 +679,115 @@ def get_task(task_id):
         else:
             return jsonify({'error': 'Task not found'}), 404
             
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- Tasks Catalog CSV Validation & Import ---
+@app.route('/api/tasks_catalog/validate', methods=['POST'])
+@token_required
+def api_validate_tasks_catalog(current_user_id):
+    try:
+        file = request.files.get('file')
+        if not file:
+            return jsonify({'error': 'CSV file is required (form field "file")'}), 400
+
+        headers, rows = _read_csv_upload(file)
+        missing = [c for c in EXPECTED_COLUMNS if c not in (headers or [])]
+        unknown_cols = [c for c in (headers or []) if c not in EXPECTED_COLUMNS]
+
+        # Row-level validation
+        issues = []
+        seen_keys = set()
+        for idx, row in enumerate(rows, start=2):  # header is line 1
+            row_issues = _validate_catalog_row(row)
+            tk = (row.get('task_key') or '').strip()
+            if tk:
+                if tk in seen_keys:
+                    row_issues.append('duplicate task_key in file')
+                else:
+                    seen_keys.add(tk)
+            if row_issues:
+                issues.append({'row': idx, 'task_key': tk, 'title': (row.get('title') or '').strip(), 'issues': row_issues})
+
+        return jsonify({
+            'headers_ok': len(missing) == 0,
+            'missing_columns': missing,
+            'unknown_columns': unknown_cols,
+            'row_count': len(rows),
+            'issue_count': len(issues),
+            'row_issues': issues
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks_catalog/import', methods=['POST'])
+@token_required
+def api_import_tasks_catalog(current_user_id):
+    try:
+        file = request.files.get('file')
+        replace = (request.form.get('replace', 'true').lower() in ('true', '1', 'yes', 'y'))
+        dry_run = (request.form.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'y'))
+        if not file:
+            return jsonify({'error': 'CSV file is required (form field "file")'}), 400
+
+        headers, rows = _read_csv_upload(file)
+        missing = [c for c in EXPECTED_COLUMNS if c not in (headers or [])]
+        issues = []
+        seen_keys = set()
+        for idx, row in enumerate(rows, start=2):
+            row_issues = _validate_catalog_row(row)
+            tk = (row.get('task_key') or '').strip()
+            if tk:
+                if tk in seen_keys:
+                    row_issues.append('duplicate task_key in file')
+                else:
+                    seen_keys.add(tk)
+            if row_issues:
+                issues.append({'row': idx, 'task_key': tk, 'title': (row.get('title') or '').strip(), 'issues': row_issues})
+
+        # Load user features for filtering
+        features_res = supabase.table('home_features').select('*').eq('user_id', current_user_id).execute()
+        base_features = {k: False for k in ALLOWED_FEATURE_KEYS}
+        if features_res.data:
+            dbf = features_res.data[0]
+            for k in ALLOWED_FEATURE_KEYS:
+                base_features[k] = bool(dbf.get(k, False))
+
+        filtered = _filter_rows_by_features(rows, base_features)
+        resolved = _resolve_overlaps(filtered)
+
+        preview = []
+        for r in resolved[:10]:
+            preview.append({
+                'task_key': (r.get('task_key') or '').strip(),
+                'title': (r.get('title') or '').strip(),
+                'next_due_date': _compute_next_due_date(r).isoformat()
+            })
+
+        report = {
+            'headers_ok': len(missing) == 0,
+            'missing_columns': missing,
+            'row_count': len(rows),
+            'issue_count': len(issues),
+            'row_issues': issues,
+            'filtered_count': len(filtered),
+            'resolved_count': len(resolved),
+            'preview_first_10': preview
+        }
+
+        if dry_run or missing or issues:
+            # Do not import if any issues or dry_run
+            status = 200 if dry_run and not missing else 400 if (missing or issues) else 200
+            return jsonify(report), status
+
+        # Proceed with import
+        if replace:
+            supabase.table('tasks').delete().eq('user_id', current_user_id).execute()
+        _insert_tasks_for_user(current_user_id, resolved)
+
+        report['imported'] = True
+        report['replace'] = replace
+        return jsonify(report)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

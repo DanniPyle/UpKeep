@@ -1,0 +1,13 @@
+task_key,title,description,frequency_days,category,priority,feature_requirements,start_offset_days,seasonal,seasonal_anchor_type,season_code,season_anchor_month,season_anchor_day,overlap_group,variant_rank,safety_critical,notes
+hvac_filter,Replace HVAC Filter,Replace air filter for better air quality and efficiency,30,HVAC,medium,has_hvac=true,,false,,,,,,1,false,
+hvac_returns_vacuum,Vacuum out HVAC return grills,Use vacuum brush attachment to clean out debris,180,HVAC,low,has_hvac=true,,false,,,,,,1,false,
+hvac_vinegar,Add vinegar to HVAC system,Add 1/4 cup distilled white vinegar to HVAC drain to prevent mold,30,HVAC,low,has_hvac=true,,false,,,,,,1,false,
+gutters_clean,Clean Gutters,Remove leaves and debris from gutters and downspouts,90,Exterior,medium,has_gutters=true,,false,,,,,,1,false,
+gutters_inspect,Inspect Gutters,Check for damage, loose connections, or clogs,180,Exterior,low,has_gutters=true,,false,,,,,,1,false,
+dishwasher_filter,Clean Dishwasher Filter,Remove and clean the dishwasher filter,30,Kitchen,low,has_dishwasher=true,,false,,,,,,1,false,
+dishwasher_clean_cycle,Run Dishwasher Cleaning Cycle,Use dishwasher cleaner or vinegar to clean the interior,90,Kitchen,low,has_dishwasher=true,,false,,,,,,1,false,
+smoke_test,Test Smoke Detectors,Press test button on all smoke detectors,30,Safety,high,has_smoke_detectors=true,,false,,,,,,1,true,
+smoke_battery_replace,Replace Smoke Detector Batteries,Replace batteries in all smoke detectors,,Safety,medium,has_smoke_detectors=true,,true,fixed_date,,11,1,,1,true,Use a fixed date as reminder (Nov 1)
+water_heater_flush,Flush Water Heater,Drain and flush water heater to remove sediment,365,Plumbing,medium,has_water_heater=true,,false,,,,,,1,false,
+water_heater_temp,Check Water Heater Temperature,Ensure water heater is set to 120°F (49°C),180,Plumbing,low,has_water_heater=true,,false,,,,,,1,false,
+winterize_faucets,Winterize Outdoor Faucets,Shut off and drain outdoor faucets before freezing temps,,Exterior,high,,,true,season_start,autumn,,,winterize_group,1,true,Once at start of autumn

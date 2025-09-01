@@ -66,6 +66,20 @@
     font-size: 14px;
 }
 
+/* Inline validation */
+.modal .form-row input.invalid,
+.modal .form-row select.invalid,
+.modal .form-row textarea.invalid {
+    border-color: #b42318;
+    background: #fde2e1;
+}
+.error-text {
+    color: #b42318;
+    font-size: 12px;
+    margin-top: 6px;
+    min-height: 14px;
+}
+
 body {
     font-family: Arial, sans-serif;
     background-color: #f5f5f5;

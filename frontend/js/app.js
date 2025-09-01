@@ -62,6 +62,48 @@ async function snoozeTask(taskId) {
     }
 }
 
+// Validation helpers
+function clearEditValidation() {
+    const titleEl = document.getElementById('edit-title');
+    const freqEl = document.getElementById('edit-frequency');
+    const titleErr = document.getElementById('edit-title-error');
+    const freqErr = document.getElementById('edit-frequency-error');
+    [titleEl, freqEl].forEach(el => el && el.classList.remove('invalid'));
+    if (titleErr) titleErr.textContent = '';
+    if (freqErr) freqErr.textContent = '';
+}
+
+function validateEditForm() {
+    const titleEl = document.getElementById('edit-title');
+    const freqEl = document.getElementById('edit-frequency');
+    const titleErr = document.getElementById('edit-title-error');
+    const freqErr = document.getElementById('edit-frequency-error');
+    let valid = true;
+
+    // Title validation
+    if (!titleEl.value.trim()) {
+        valid = false;
+        titleEl.classList.add('invalid');
+        if (titleErr) titleErr.textContent = 'Title is required.';
+    } else {
+        titleEl.classList.remove('invalid');
+        if (titleErr) titleErr.textContent = '';
+    }
+
+    // Frequency validation
+    const freq = parseInt(freqEl.value, 10);
+    if (!freq || freq <= 0) {
+        valid = false;
+        freqEl.classList.add('invalid');
+        if (freqErr) freqErr.textContent = 'Enter a positive number of days.';
+    } else {
+        freqEl.classList.remove('invalid');
+        if (freqErr) freqErr.textContent = '';
+    }
+
+    return valid;
+}
+
 async function viewHistory(taskId) {
     try {
         const response = await fetch(`${API_BASE_URL}/api/task_history/${taskId}`, {
@@ -143,12 +185,38 @@ function setupEventListeners() {
     if (closeHistory) {
         closeHistory.addEventListener('click', closeHistoryModal);
     }
+    const historyModal = document.getElementById('history-modal');
+    if (historyModal) {
+        historyModal.addEventListener('click', (e) => {
+            if (e.target === historyModal) closeHistoryModal();
+        });
+    }
 
     // Edit modal
     const editCancel = document.getElementById('edit-cancel');
     const editSave = document.getElementById('edit-save');
     if (editCancel) editCancel.addEventListener('click', closeEditModal);
     if (editSave) editSave.addEventListener('click', saveEditTask);
+    const editModal = document.getElementById('edit-modal');
+    if (editModal) {
+        editModal.addEventListener('click', (e) => {
+            if (e.target === editModal) closeEditModal();
+        });
+    }
+
+    // Edit form inline validation
+    const editTitle = document.getElementById('edit-title');
+    const editFrequency = document.getElementById('edit-frequency');
+    if (editTitle) editTitle.addEventListener('input', validateEditForm);
+    if (editFrequency) editFrequency.addEventListener('input', validateEditForm);
+
+    // Global ESC key to close modals
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeHistoryModal();
+            closeEditModal();
+        }
+    });
 }
 
 // Auth functions
@@ -354,6 +422,7 @@ function openEditModal(taskId) {
     document.getElementById('edit-frequency').value = task.frequency_days || '';
     document.getElementById('edit-priority').value = task.priority || '';
     document.getElementById('edit-category').value = task.category || '';
+    clearEditValidation();
     const modal = document.getElementById('edit-modal');
     if (modal) modal.style.display = 'flex';
 }
@@ -371,10 +440,7 @@ async function saveEditTask() {
     const frequency = parseInt(document.getElementById('edit-frequency').value, 10);
     const priority = document.getElementById('edit-priority').value || null;
     const category = document.getElementById('edit-category').value.trim() || null;
-    if (!title || !frequency || frequency <= 0) {
-        showFlashMessage('Please provide a valid title and frequency.', 'error');
-        return;
-    }
+    if (!validateEditForm()) return;
     try {
         const response = await fetch(`${API_BASE_URL}/api/tasks/${editingTaskId}`, {
             method: 'PUT',
