@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home Maintenance Tracker</title>
-    <link rel="stylesheet" href="css/style.css">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
+    <link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
     <div class="container">
@@ -50,48 +52,87 @@
 
             <!-- Dashboard Section -->
             <div id="dashboard-section" style="display: none;">
-                <div class="nav">
-                    <span id="welcome-message"></span>
-                    <button id="questionnaire-btn">Update Home Features</button>
-                    <button id="logout-btn">Logout</button>
+                
+
+                <!-- Hero Header -->
+                <section class="hero">
+                    <div class="hero-text">
+                        <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">Friend</span></h1>
+                        <p class="sub">Keep your home in perfect condition with smart reminders</p>
+                    </div>
+                    <div class="hero-actions">
+                        <form class="hero-search" id="hero-search-form" role="search" onsubmit="return false;">
+                            <span class="search-icon">🔍</span>
+                            <input id="hero-search" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" />
+                        </form>
+                        <div class="user-menu-wrap">
+                            <button id="user-menu-toggle" class="avatar-btn" aria-haspopup="menu" aria-expanded="false" title="Account">
+                                <span id="avatar-initial">U</span>
+                            </button>
+                            <div id="user-menu" class="user-menu" role="menu">
+                                <button id="questionnaire-btn" role="menuitem">Update Home Features</button>
+                                <button id="logout-btn" role="menuitem">Logout</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Quick Actions Row below hero -->
+                <div class="quick-actions">
+                    <button id="add-custom-task" class="quick-btn">
+                        <span class="qa-icon">+</span>
+                        Add Custom Task
+                    </button>
                 </div>
 
-                <h1>Dashboard</h1>
-                <!-- Filters -->
-                <div id="filters" class="filters">
-                    <input type="text" id="filter-search" placeholder="Search title/description">
-                    <input type="text" id="filter-category" placeholder="Category">
-                    <select id="filter-priority">
-                        <option value="">All priorities</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                    </select>
-                    <input type="number" id="filter-min-freq" placeholder="Min days" min="0">
-                    <input type="number" id="filter-max-freq" placeholder="Max days" min="0">
-                    <button id="apply-filters">Apply</button>
-                    <button id="clear-filters">Clear</button>
+                <div class="top-panels">
+                    <!-- Overview Tiles -->
+                    <section id="overview" class="overview" aria-label="Home health overview">
+                        <div class="panel-card">
+                            <h3 class="panel-title">Home Health Overview</h3>
+                            <div id="overview-tiles" class="overview-tiles"></div>
+                        </div>
+                    </section>
+
+                    <!-- Urgent Attention -->
+                    <section id="urgent" class="urgent" aria-label="Urgent attention">
+                        <div class="panel-card">
+                            <h3 class="panel-title">Urgent Attention</h3>
+                            <div id="urgent-card"></div>
+                        </div>
+                    </section>
                 </div>
+
+                <!-- Simple search only (hero). Keep hidden input for JS query param build. -->
+                <input type="hidden" id="filter-search" value="">
                 
                 <div id="tasks-container">
                     <div class="task-section">
-                        <h2>Overdue Tasks</h2>
-                        <div id="overdue-tasks"></div>
+                        <div class="panel-card">
+                            <h3 class="panel-title">Overdue Tasks</h3>
+                            <div id="overdue-tasks"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="task-section span-all">
+                        <div class="panel-card">
+                            <h3 class="panel-title">Upcoming Tasks (Next 30 Days)</h3>
+                            <div id="upcoming-tasks"></div>
+                        </div>
                     </div>
                     
                     <div class="task-section">
-                        <h2>Upcoming Tasks (Next 30 Days)</h2>
-                        <div id="upcoming-tasks"></div>
+                        <div class="panel-card">
+                            <h3 class="panel-title">Future Tasks</h3>
+                            <div id="future-tasks"></div>
+                        </div>
                     </div>
                     
                     <div class="task-section">
-                        <h2>Future Tasks</h2>
-                        <div id="future-tasks"></div>
-                    </div>
-                    
-                    <div class="task-section">
-                        <h2>Recently Completed</h2>
-                        <div id="completed-tasks"></div>
+                        <div class="panel-card">
+                            <h3 class="panel-title">Recently Completed</h3>
+                            <div id="completed-tasks"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -125,6 +166,38 @@
                         <div class="checkbox-item">
                             <input type="checkbox" id="has_water_heater" name="has_water_heater">
                             <label for="has_water_heater">Water Heater</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_water_softener" name="has_water_softener">
+                            <label for="has_water_softener">Water Softener</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_garbage_disposal" name="has_garbage_disposal">
+                            <label for="has_garbage_disposal">Garbage Disposal</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_washer_dryer" name="has_washer_dryer">
+                            <label for="has_washer_dryer">Washer/Dryer</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_sump_pump" name="has_sump_pump">
+                            <label for="has_sump_pump">Sump Pump</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_well" name="has_well">
+                            <label for="has_well">Well</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_fireplace" name="has_fireplace">
+                            <label for="has_fireplace">Fireplace</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_septic" name="has_septic">
+                            <label for="has_septic">Septic</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="has_garage" name="has_garage">
+                            <label for="has_garage">Garage</label>
                         </div>
                     </div>
                     <button type="submit">Save Features</button>

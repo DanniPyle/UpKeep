@@ -74,7 +74,19 @@ TASK_TEMPLATES = {
 
 # --- Catalog import/validation constants & helpers ---
 ALLOWED_FEATURE_KEYS = {
-    'has_hvac', 'has_gutters', 'has_dishwasher', 'has_smoke_detectors', 'has_water_heater'
+    'has_hvac',
+    'has_gutters',
+    'has_dishwasher',
+    'has_smoke_detectors',
+    'has_water_heater',
+    'has_water_softener',
+    'has_garbage_disposal',
+    'has_washer_dryer',
+    'has_sump_pump',
+    'has_well',
+    'has_fireplace',
+    'has_septic',
+    'has_garage',
 }
 
 PRIORITY_VALUES = {'low', 'medium', 'high'}
@@ -470,6 +482,14 @@ def questionnaire():
             'has_dishwasher': 'has_dishwasher' in request.form,
             'has_smoke_detectors': 'has_smoke_detectors' in request.form,
             'has_water_heater': 'has_water_heater' in request.form,
+            'has_water_softener': 'has_water_softener' in request.form,
+            'has_garbage_disposal': 'has_garbage_disposal' in request.form,
+            'has_washer_dryer': 'has_washer_dryer' in request.form,
+            'has_sump_pump': 'has_sump_pump' in request.form,
+            'has_well': 'has_well' in request.form,
+            'has_fireplace': 'has_fireplace' in request.form,
+            'has_septic': 'has_septic' in request.form,
+            'has_garage': 'has_garage' in request.form,
         }
         
         try:
@@ -1122,6 +1142,14 @@ def api_questionnaire(current_user_id):
             'has_dishwasher': data.get('has_dishwasher', False),
             'has_smoke_detectors': data.get('has_smoke_detectors', False),
             'has_water_heater': data.get('has_water_heater', False),
+            'has_water_softener': data.get('has_water_softener', False),
+            'has_garbage_disposal': data.get('has_garbage_disposal', False),
+            'has_washer_dryer': data.get('has_washer_dryer', False),
+            'has_sump_pump': data.get('has_sump_pump', False),
+            'has_well': data.get('has_well', False),
+            'has_fireplace': data.get('has_fireplace', False),
+            'has_septic': data.get('has_septic', False),
+            'has_garage': data.get('has_garage', False),
         }
         
         # Check if features already exist

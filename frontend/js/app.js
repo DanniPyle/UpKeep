@@ -30,8 +30,70 @@ function initializeApp() {
     } else {
         showAuthSection();
     }
-
 }
+
+async function snoozeTaskQuick(taskId, days) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ days })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showFlashMessage(data.message || `Snoozed ${days} days`);
+            loadDashboardData();
+        } else {
+            showFlashMessage(data.error || 'Failed to snooze task', 'error');
+        }
+    } catch (e) {
+        showFlashMessage('Network error', 'error');
+    }
+}
+
+function renderUrgent(data) {
+    const sec = document.getElementById('urgent');
+    const card = document.getElementById('urgent-card');
+    if (!sec || !card) return;
+    const list = data.overdue_tasks || [];
+    if (!list.length) {
+        // Empty state keeps the right column visible
+        card.innerHTML = `
+          <div class="card">
+            <div class="text">
+              <div class="title">You're all caught up</div>
+              <div class="subtitle">No overdue tasks right now. Great job!</div>
+            </div>
+          </div>`;
+        return;
+    }
+    const t = list[0]; // top overdue already sorted by API
+    const overdueDays = (() => {
+        if (!t.next_due_date) return null;
+        const due = new Date(t.next_due_date);
+        const now = new Date();
+        const diff = Math.ceil((now - due) / (1000*60*60*24));
+        return diff > 0 ? diff : 0;
+    })();
+    card.innerHTML = `
+      <div class="card">
+        <div class="text">
+          <div class="title">Urgent Attention: ${t.title}</div>
+          <div class="subtitle">${overdueDays ? `${overdueDays} day${overdueDays===1?'':'s'} overdue` : 'Overdue task'}</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" onclick="completeTask(${t.id})">Complete</button>
+          <button class="btn" onclick="snoozeTaskQuick(${t.id}, 7)">Snooze 7d</button>
+          <button class="btn ghost" onclick="openEditModal(${t.id})">Edit</button>
+          <button class="btn ghost" onclick="viewHistory(${t.id})">History</button>
+        </div>
+      </div>`;
+}
+
+
 
 async function snoozeTask(taskId) {
     const daysStr = prompt('Snooze by how many days?');
@@ -61,6 +123,7 @@ async function snoozeTask(taskId) {
         showFlashMessage('Network error', 'error');
     }
 }
+// CSV import UI removed
 
 // Validation helpers
 function clearEditValidation() {
@@ -157,6 +220,37 @@ function setupEventListeners() {
     document.getElementById('back-to-dashboard').addEventListener('click', showDashboard);
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
     document.getElementById('logout-btn-2').addEventListener('click', handleLogout);
+
+    // User menu (avatar dropdown)
+    const userMenuToggle = document.getElementById('user-menu-toggle');
+    const userMenu = document.getElementById('user-menu');
+    if (userMenuToggle && userMenu) {
+        const closeMenu = () => {
+            userMenu.classList.remove('open');
+            userMenuToggle.setAttribute('aria-expanded', 'false');
+        };
+        const openMenu = () => {
+            userMenu.classList.add('open');
+            userMenuToggle.setAttribute('aria-expanded', 'true');
+        };
+        userMenuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = userMenu.classList.contains('open');
+            if (isOpen) closeMenu(); else openMenu();
+        });
+        // Click outside closes
+        document.addEventListener('click', (e) => {
+            if (!userMenu.contains(e.target) && e.target !== userMenuToggle) {
+                closeMenu();
+            }
+        });
+        // Esc closes
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeMenu();
+        });
+        // Prevent clicks inside the menu from bubbling (so it won't close immediately)
+        userMenu.addEventListener('click', (e) => e.stopPropagation());
+    }
     
     // Questionnaire
     document.getElementById('questionnaire-form').addEventListener('submit', handleQuestionnaire);
@@ -164,6 +258,59 @@ function setupEventListeners() {
     // Filters
     const applyBtn = document.getElementById('apply-filters');
     const clearBtn = document.getElementById('clear-filters');
+    const filterSearch = document.getElementById('filter-search');
+    const heroSearch = document.getElementById('hero-search');
+    const heroSearchForm = document.getElementById('hero-search-form');
+    // Debounce helper for live filtering
+    const debounce = (fn, delay = 300) => {
+        let t;
+        return (...args) => {
+            clearTimeout(t);
+            t = setTimeout(() => fn.apply(null, args), delay);
+        };
+    };
+    const debouncedLoad = debounce(() => loadDashboardData(), 300);
+    // Keep hero search and filter search in sync
+    if (heroSearch && filterSearch) {
+        // Initialize hero search with existing filter value
+        heroSearch.value = filterSearch.value || '';
+        heroSearch.addEventListener('input', () => {
+            filterSearch.value = heroSearch.value;
+            debouncedLoad();
+        });
+        heroSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadDashboardData();
+            }
+        });
+        if (heroSearchForm) {
+            heroSearchForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                loadDashboardData();
+            });
+        }
+    }
+    // Typing in sidebar search should also live-filter and sync hero
+    if (filterSearch) {
+        filterSearch.addEventListener('input', () => {
+            if (heroSearch) heroSearch.value = filterSearch.value;
+            debouncedLoad();
+        });
+        filterSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadDashboardData();
+            }
+        });
+    }
+    // Advanced filters live updates
+    ['filter-category','filter-priority','filter-min-freq','filter-max-freq'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', debouncedLoad);
+        el.addEventListener('change', debouncedLoad);
+    });
     if (applyBtn) {
         applyBtn.addEventListener('click', () => {
             loadDashboardData();
@@ -172,6 +319,7 @@ function setupEventListeners() {
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
             document.getElementById('filter-search').value = '';
+            if (heroSearch) heroSearch.value = '';
             document.getElementById('filter-category').value = '';
             document.getElementById('filter-priority').value = '';
             document.getElementById('filter-min-freq').value = '';
@@ -204,6 +352,8 @@ function setupEventListeners() {
         });
     }
 
+    // CSV import UI removed
+
     // Edit form inline validation
     const editTitle = document.getElementById('edit-title');
     const editFrequency = document.getElementById('edit-frequency');
@@ -217,6 +367,14 @@ function setupEventListeners() {
             closeEditModal();
         }
     });
+
+    // Quick action: Add Custom Task (placeholder)
+    const addCustomTaskBtn = document.getElementById('add-custom-task');
+    if (addCustomTaskBtn) {
+        addCustomTaskBtn.addEventListener('click', () => {
+            showFlashMessage('Add Custom Task coming soon');
+        });
+    }
 }
 
 // Auth functions
@@ -321,8 +479,17 @@ function showDashboard() {
     dashboardSection.style.display = 'block';
     questionnaireSection.style.display = 'none';
     
-    if (currentUser) {
-        document.getElementById('welcome-message').textContent = `Welcome, ${currentUser.username}!`;
+    // welcome-message removed from layout
+
+    // Hero greeting + name
+    const heroGreeting = document.getElementById('hero-greeting');
+    const heroName = document.getElementById('hero-name');
+    if (heroGreeting) heroGreeting.textContent = getTimeOfDayGreeting();
+    if (heroName && currentUser && currentUser.username) heroName.textContent = currentUser.username;
+    // Set avatar initial
+    const avatarInitial = document.getElementById('avatar-initial');
+    if (avatarInitial && currentUser && currentUser.username) {
+        avatarInitial.textContent = (currentUser.username[0] || 'U').toUpperCase();
     }
 }
 
@@ -368,48 +535,137 @@ async function loadDashboardData() {
 }
 
 function renderTasks(data) {
+    renderOverview(data);
+    renderUrgent(data);
     renderTaskSection('overdue-tasks', data.overdue_tasks, 'overdue');
     renderTaskSection('upcoming-tasks', data.upcoming_tasks, 'upcoming');
     renderTaskSection('future-tasks', data.future_tasks, 'future');
     renderTaskSection('completed-tasks', data.completed_tasks, 'completed');
 }
 
+function renderOverview(data) {
+    const wrap = document.getElementById('overview-tiles');
+    if (!wrap) return;
+
+    const today = new Date();
+    const endOfWeek = new Date(today); // 7 days window for "due this week"
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+
+    const overdueCount = (data.overdue_tasks || []).length;
+    const dueThisWeek = (data.upcoming_tasks || []).filter(t => {
+        if (!t.next_due_date) return false;
+        const d = new Date(t.next_due_date);
+        return d <= endOfWeek;
+    }).length;
+
+    // Completed this month
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const completedThisMonth = (data.completed_tasks || []).filter(t => {
+        if (!t.last_completed) return false;
+        const d = new Date(t.last_completed);
+        return d.getMonth() === m && d.getFullYear() === y;
+    }).length;
+
+    // Upcoming total (next 30 days already in API as upcoming_tasks)
+    const upcomingCount = (data.upcoming_tasks || []).length;
+
+    wrap.innerHTML = `
+      <div class="tile overdue">
+        <div class="label">Overdue</div>
+        <div class="value">${overdueCount}</div>
+      </div>
+      <div class="tile week">
+        <div class="label">Due this week</div>
+        <div class="value">${dueThisWeek}</div>
+      </div>
+      <div class="tile completed">
+        <div class="label">Completed this month</div>
+        <div class="value">${completedThisMonth}</div>
+      </div>
+      <div class="tile upcoming">
+        <div class="label">Upcoming (30 days)</div>
+        <div class="value">${upcomingCount}</div>
+      </div>`;
+}
+
 function renderTaskSection(containerId, tasks, taskType) {
     const container = document.getElementById(containerId);
-    
+    if (!container) return;
+
+    // Hide the entire Overdue section when empty; otherwise show it
     if (!tasks || tasks.length === 0) {
+        if (containerId === 'overdue-tasks') {
+            const wrapper = container.closest('.task-section');
+            if (wrapper) wrapper.style.display = 'none';
+            return;
+        }
+        // For other sections, keep an empty state
         container.innerHTML = '<p>No tasks in this category.</p>';
         return;
     }
-    
-    // cache
+
+    // Ensure overdue section is visible when data exists again
+    if (containerId === 'overdue-tasks') {
+        const wrapper = container.closest('.task-section');
+        if (wrapper) wrapper.style.display = '';
+    }
+
+    // Cache tasks for editing
     tasks.forEach(t => { tasksCache[t.id] = t; });
 
-    container.innerHTML = tasks.map(task => `
-        <div class="task ${taskType}">
-            <div class="task-content">
-                <div class="task-title">${task.title}</div>
-                <div class="task-description">${task.description}</div>
-                <div class="task-meta">
-                    <span class="badge freq">Every ${task.frequency_days} days</span>
-                    ${task.category ? `<span class="badge category">${task.category}</span>` : ''}
-                    ${task.priority ? `<span class="badge priority ${task.priority}">${task.priority}</span>` : ''}
+    const cards = tasks.map(task => {
+        const due = task.next_due_date ? formatDate(task.next_due_date) : '';
+        const priority = task.priority ? task.priority : '';
+        const category = task.category ? task.category : '';
+        const freq = task.frequency_days ? `Every ${task.frequency_days} days` : '';
+        const statusClass = taskType; // overdue | upcoming | future | completed
+        return `
+        <div class="task-card ${statusClass}">
+            <div class="card-header">
+                <div class="title">${task.title}</div>
+                ${task.description ? `<div class="desc">${task.description}</div>` : ''}
+                <div class="corner-dot"></div>
+            </div>
+            <div class="card-body">
+                <div class="info">
+                    <div class="info-item"><span class="label">Due date</span><span class="value">${due || '-'}</span></div>
+                    <div class="info-item"><span class="label">Location</span><span class="value">${category || '-'}</span></div>
+                    <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill ${priority || ''}">${priority || '-'}</span></span></div>
+                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">${freq || '-'}</span></span></div>
                 </div>
-                <div class="task-date">Due: ${formatDate(task.next_due_date)}</div>
+                <div class="actions">
+                    ${taskType === 'completed' 
+                        ? `<button class="reset-btn" onclick="resetTask(${task.id})">
+                              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.708"/><path d="M3 4v5h5"/></svg>
+                              Reset
+                           </button>`
+                        : `
+                            <button class="complete-btn" onclick="completeTask(${task.id})">
+                              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg>
+                              Mark Complete
+                            </button>
+                            <button class="snooze-btn ghost" onclick="snoozeTask(${task.id})">
+                              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                              Snooze
+                            </button>
+                        `
+                    }
+                    <button class="edit-btn ghost" onclick="openEditModal(${task.id})">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                      Edit
+                    </button>
+                    <button class="history-btn ghost" onclick="viewHistory(${task.id})">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/><path d="M12 7v5l3 3"/></svg>
+                      History
+                    </button>
+                </div>
             </div>
-            <div class="task-actions">
-                ${taskType === 'completed' 
-                    ? `<button class="reset-btn" onclick="resetTask(${task.id})">Reset</button>`
-                    : `
-                        <button class="complete-btn" onclick="completeTask(${task.id})">Complete</button>
-                        <button class="snooze-btn" onclick="snoozeTask(${task.id})">Snooze</button>
-                    `
-                }
-                <button class="edit-btn" onclick="openEditModal(${task.id})">Edit</button>
-                <button class="history-btn" onclick="viewHistory(${task.id})">History</button>
-            </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="task-card-list">${cards}</div>`;
 }
 
 // Edit modal functions
@@ -544,7 +800,15 @@ async function handleQuestionnaire(e) {
         has_gutters: document.getElementById('has_gutters').checked,
         has_dishwasher: document.getElementById('has_dishwasher').checked,
         has_smoke_detectors: document.getElementById('has_smoke_detectors').checked,
-        has_water_heater: document.getElementById('has_water_heater').checked
+        has_water_heater: document.getElementById('has_water_heater').checked,
+        has_water_softener: document.getElementById('has_water_softener').checked,
+        has_garbage_disposal: document.getElementById('has_garbage_disposal').checked,
+        has_washer_dryer: document.getElementById('has_washer_dryer').checked,
+        has_sump_pump: document.getElementById('has_sump_pump').checked,
+        has_well: document.getElementById('has_well').checked,
+        has_fireplace: document.getElementById('has_fireplace').checked,
+        has_septic: document.getElementById('has_septic').checked,
+        has_garage: document.getElementById('has_garage').checked
     };
     
     try {
@@ -587,4 +851,12 @@ function showFlashMessage(message, type = 'success') {
 function formatDate(dateString) {
     const date = new Date(dateString);
     return date.toLocaleDateString();
+}
+
+// Returns Good morning/afternoon/evening
+function getTimeOfDayGreeting() {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
 }
