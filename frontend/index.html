@@ -15,7 +15,7 @@
             <div id="auth-section" class="auth-section">
                 <h1>Home Maintenance Tracker</h1>
                 <div class="auth-tabs">
-                    <button id="login-tab" class="tab-button active">Login</button>
+                    <button id="login-tab" class="tab-button active">Log in</button>
                     <button id="register-tab" class="tab-button">Register</button>
                 </div>
                 
@@ -29,7 +29,7 @@
                         <label for="login-password">Password:</label>
                         <input type="password" id="login-password" required>
                     </div>
-                    <button type="submit">Login</button>
+                    <button type="submit">Log in</button>
                 </form>
 
                 <!-- Register Form -->
@@ -58,7 +58,7 @@
                 <section class="hero">
                     <div class="hero-text">
                         <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">Friend</span></h1>
-                        <p class="sub">Keep your home in perfect condition with smart reminders</p>
+                        <p class="sub">Helping you take care of your home, one step at a time</p>
                     </div>
                     <div class="hero-actions">
                         <form class="hero-search" id="hero-search-form" role="search" onsubmit="return false;">
@@ -239,6 +239,10 @@
                             <label for="edit-frequency">Frequency (days)</label>
                             <input type="number" id="edit-frequency" min="1" required />
                             <div class="error-text" id="edit-frequency-error"></div>
+                        </div>
+                        <div class="form-row">
+                            <label for="edit-due-date">Due date</label>
+                            <input type="date" id="edit-due-date" />
                         </div>
                         <div class="form-row">
                             <label for="edit-priority">Priority</label>

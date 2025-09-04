@@ -32,6 +32,95 @@ function initializeApp() {
     }
 }
 
+// Helper: relative due label (e.g., "N days ago", "Today", or formatted date)
+function getRelativeDueLabel(dateStr) {
+    if (!dateStr) return '';
+    const due = new Date(dateStr);
+    const now = new Date();
+    const isToday = due.getFullYear() === now.getFullYear() && due.getMonth() === now.getMonth() && due.getDate() === now.getDate();
+    const diffDays = Math.ceil((now - due) / (1000 * 60 * 60 * 24));
+    if (diffDays > 0) {
+        return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+    }
+    if (isToday) return 'Today';
+    return formatDate(dateStr);
+}
+
+// Shared card component used by both renderUrgent and renderTaskSection
+// options: { statusClass, dueLabel, isUrgent, taskType }
+function buildTaskCard(task, options = {}) {
+    const { statusClass = '', dueLabel = '', isUrgent = false, taskType = '' } = options;
+    const priorityRaw = task.priority ? String(task.priority) : '';
+    const priority = priorityRaw.toLowerCase();
+    const freq = task.frequency_days ? `${task.frequency_days} days` : '';
+    const headerClass = isUrgent ? 'urgent' : '';
+
+    // Actions differ for completed vs other types
+    let actionsHtml = '';
+    if (taskType === 'completed') {
+        actionsHtml = `
+            <button class="reset-btn" onclick="resetTask(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.708"/><path d="M3 4v5h5"/></svg>
+              Reset
+            </button>`;
+    } else if (isUrgent) {
+        actionsHtml = `
+            <button class="btn primary" onclick="completeTask(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+              Complete
+            </button>
+            <button class="btn ghost" onclick="openEditModal(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              Edit
+            </button>
+            <button class="btn ghost" onclick="viewHistory(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v5h5"/>
+                <path d="M3.05 13a9 9 0 1 0 2.13-5.36"/>
+                <path d="M12 7v5l3 3"/>
+              </svg>
+              History
+            </button>`;
+    } else {
+        actionsHtml = `
+            <button class="complete-btn" onclick="completeTask(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+              Complete
+            </button>
+            <button class="edit-btn ghost" onclick="openEditModal(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              Edit
+            </button>
+            <button class="history-btn ghost" onclick="viewHistory(${task.id})">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v5h5"/>
+                <path d="M3.05 13a9 9 0 1 0 2.13-5.36"/>
+                <path d="M12 7v5l3 3"/>
+              </svg>
+              History
+            </button>`;
+    }
+
+    return `
+      <div class="task-card ${statusClass}">
+        <div class="card-header ${headerClass}">
+          <div class="title">${task.title}</div>
+          ${task.description ? `<div class="desc">${task.description}</div>` : ''}
+          <div class="corner-dot"></div>
+        </div>
+        <div class="card-body">
+          <div class="info">  
+            <div class="info-item"><span class="label">Due date</span><span class="value">${dueLabel || '-'}</span></div>
+            <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill ${priority || ''}">${priorityRaw || '-'}</span></span></div>
+            <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">${freq || '-'}</span></span></div>
+          </div>
+          <div class="actions">
+            ${actionsHtml}
+          </div>
+        </div>
+      </div>`;
+}
+
 async function snoozeTaskQuick(taskId, days) {
     try {
         const response = await fetch(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
@@ -71,26 +160,10 @@ function renderUrgent(data) {
         return;
     }
     const t = list[0]; // top overdue already sorted by API
-    const overdueDays = (() => {
-        if (!t.next_due_date) return null;
-        const due = new Date(t.next_due_date);
-        const now = new Date();
-        const diff = Math.ceil((now - due) / (1000*60*60*24));
-        return diff > 0 ? diff : 0;
-    })();
-    card.innerHTML = `
-      <div class="card">
-        <div class="text">
-          <div class="title">Urgent Attention: ${t.title}</div>
-          <div class="subtitle">${overdueDays ? `${overdueDays} day${overdueDays===1?'':'s'} overdue` : 'Overdue task'}</div>
-        </div>
-        <div class="actions">
-          <button class="btn primary" onclick="completeTask(${t.id})">Complete</button>
-          <button class="btn" onclick="snoozeTaskQuick(${t.id}, 7)">Snooze 7d</button>
-          <button class="btn ghost" onclick="openEditModal(${t.id})">Edit</button>
-          <button class="btn ghost" onclick="viewHistory(${t.id})">History</button>
-        </div>
-      </div>`;
+    // Ensure urgent task is available for Edit modal
+    if (t && t.id) { tasksCache[t.id] = t; }
+    const dueLabel = getRelativeDueLabel(t.next_due_date);
+    card.innerHTML = buildTaskCard(t, { statusClass: 'urgent', dueLabel, isUrgent: true, taskType: 'overdue' });
 }
 
 
@@ -536,8 +609,13 @@ async function loadDashboardData() {
 
 function renderTasks(data) {
     renderOverview(data);
+    // Urgent shows the top overdue task (if any)
     renderUrgent(data);
-    renderTaskSection('overdue-tasks', data.overdue_tasks, 'overdue');
+
+    // Overdue section should exclude the urgent task
+    const overdueAll = (data.overdue_tasks || []);
+    const overdueRemainder = overdueAll.slice(1); // hide the top one shown in Urgent
+    renderTaskSection('overdue-tasks', overdueRemainder, 'overdue');
     renderTaskSection('upcoming-tasks', data.upcoming_tasks, 'upcoming');
     renderTaskSection('future-tasks', data.future_tasks, 'future');
     renderTaskSection('completed-tasks', data.completed_tasks, 'completed');
@@ -616,53 +694,12 @@ function renderTaskSection(containerId, tasks, taskType) {
     tasks.forEach(t => { tasksCache[t.id] = t; });
 
     const cards = tasks.map(task => {
-        const due = task.next_due_date ? formatDate(task.next_due_date) : '';
-        const priority = task.priority ? task.priority : '';
-        const category = task.category ? task.category : '';
-        const freq = task.frequency_days ? `Every ${task.frequency_days} days` : '';
         const statusClass = taskType; // overdue | upcoming | future | completed
-        return `
-        <div class="task-card ${statusClass}">
-            <div class="card-header">
-                <div class="title">${task.title}</div>
-                ${task.description ? `<div class="desc">${task.description}</div>` : ''}
-                <div class="corner-dot"></div>
-            </div>
-            <div class="card-body">
-                <div class="info">
-                    <div class="info-item"><span class="label">Due date</span><span class="value">${due || '-'}</span></div>
-                    <div class="info-item"><span class="label">Location</span><span class="value">${category || '-'}</span></div>
-                    <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill ${priority || ''}">${priority || '-'}</span></span></div>
-                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">${freq || '-'}</span></span></div>
-                </div>
-                <div class="actions">
-                    ${taskType === 'completed' 
-                        ? `<button class="reset-btn" onclick="resetTask(${task.id})">
-                              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.708"/><path d="M3 4v5h5"/></svg>
-                              Reset
-                           </button>`
-                        : `
-                            <button class="complete-btn" onclick="completeTask(${task.id})">
-                              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg>
-                              Mark Complete
-                            </button>
-                            <button class="snooze-btn ghost" onclick="snoozeTask(${task.id})">
-                              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-                              Snooze
-                            </button>
-                        `
-                    }
-                    <button class="edit-btn ghost" onclick="openEditModal(${task.id})">
-                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                      Edit
-                    </button>
-                    <button class="history-btn ghost" onclick="viewHistory(${task.id})">
-                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/><path d="M12 7v5l3 3"/></svg>
-                      History
-                    </button>
-                </div>
-            </div>
-        </div>`;
+        const useRelative = (taskType === 'upcoming' || taskType === 'overdue');
+        const dueLabel = useRelative
+            ? getRelativeDueLabel(task.next_due_date)
+            : (task.next_due_date ? formatDate(task.next_due_date) : '');
+        return buildTaskCard(task, { statusClass, dueLabel, isUrgent: false, taskType });
     }).join('');
 
     container.innerHTML = `<div class="task-card-list">${cards}</div>`;
@@ -678,6 +715,18 @@ function openEditModal(taskId) {
     document.getElementById('edit-frequency').value = task.frequency_days || '';
     document.getElementById('edit-priority').value = task.priority || '';
     document.getElementById('edit-category').value = task.category || '';
+    const dueInput = document.getElementById('edit-due-date');
+    if (dueInput) {
+        if (task.next_due_date) {
+            const d = new Date(task.next_due_date);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            dueInput.value = `${yyyy}-${mm}-${dd}`;
+        } else {
+            dueInput.value = '';
+        }
+    }
     clearEditValidation();
     const modal = document.getElementById('edit-modal');
     if (modal) modal.style.display = 'flex';
@@ -696,6 +745,7 @@ async function saveEditTask() {
     const frequency = parseInt(document.getElementById('edit-frequency').value, 10);
     const priority = document.getElementById('edit-priority').value || null;
     const category = document.getElementById('edit-category').value.trim() || null;
+    const next_due_date = (document.getElementById('edit-due-date') && document.getElementById('edit-due-date').value) ? document.getElementById('edit-due-date').value : null;
     if (!validateEditForm()) return;
     try {
         const response = await fetch(`${API_BASE_URL}/api/tasks/${editingTaskId}`, {
@@ -704,7 +754,7 @@ async function saveEditTask() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ title, description, frequency_days: frequency, priority, category })
+            body: JSON.stringify({ title, description, frequency_days: frequency, priority, category, next_due_date })
         });
         const data = await response.json();
         if (response.ok) {

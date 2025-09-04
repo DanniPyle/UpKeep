@@ -1,77 +1,341 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Tell Us About Your Home</h1>
-<p>Check all the features your home has. We'll create maintenance tasks based on your selections.</p>
+<section class="home-details" id="wizard">
+  <style>
+    /* Scoped to questionnaire wizard to avoid global impact */
+    #wizard .card { background:#f8f9fa; border:1px solid #ddd; border-radius:8px; padding:20px; margin: 10px 0; }
+    #wizard .wizard-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    #wizard .wizard-actions { display:flex; gap:10px; }
+    #wizard .progress { height:10px; background:#eee; border-radius:6px; overflow:hidden; margin:10px 0 18px; }
+    #wizard .progress > .bar { height:100%; width:0%; background:#28a745; transition: width .25s ease; }
+    #wizard .steps { margin-top: 8px; }
+    #wizard .step { display:none; }
+    #wizard .step.active { display:block; }
+    #wizard .step h2 { margin-top:0; }
+    #wizard .nav-buttons { display:flex; justify-content:space-between; gap:10px; margin-top:16px; }
+    #wizard .nav-buttons .left, #wizard .nav-buttons .right { display:flex; gap:10px; }
+    #wizard .muted { color:#555; }
+    #wizard .radio-group, #wizard .checkbox-group { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
+    #wizard .inline { display:flex; gap:10px; align-items:center; }
+    #wizard .success { text-align:center; padding:30px; }
+    #wizard .success h2 { color:#28a745; }
+    #wizard .hint { font-size: 13px; color:#666; }
+    #wizard label { font-weight: 600; }
 
-<form method="POST">
-    <div class="checkbox-group">
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_hvac" name="has_hvac">
-            <label for="has_hvac">HVAC System (Heating/Air Conditioning)</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_gutters" name="has_gutters">
-            <label for="has_gutters">Gutters</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_dishwasher" name="has_dishwasher">
-            <label for="has_dishwasher">Dishwasher</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_smoke_detectors" name="has_smoke_detectors">
-            <label for="has_smoke_detectors">Smoke Detectors</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_water_heater" name="has_water_heater">
-            <label for="has_water_heater">Water Heater</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_water_softener" name="has_water_softener">
-            <label for="has_water_softener">Water Softener</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_garbage_disposal" name="has_garbage_disposal">
-            <label for="has_garbage_disposal">Garbage Disposal</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_washer_dryer" name="has_washer_dryer">
-            <label for="has_washer_dryer">Washer/Dryer</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_sump_pump" name="has_sump_pump">
-            <label for="has_sump_pump">Sump Pump</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_well" name="has_well">
-            <label for="has_well">Well</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_fireplace" name="has_fireplace">
-            <label for="has_fireplace">Fireplace</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_septic" name="has_septic">
-            <label for="has_septic">Septic</label>
-        </div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="has_garage" name="has_garage">
-            <label for="has_garage">Garage</label>
-        </div>
+    /* Button styles to match task-card global look */
+    #wizard .btn {
+      display:inline-flex; align-items:center; justify-content:center;
+      height:38px; padding:0 14px; border-radius:14px; font-weight:600; font-size:14px;
+      border:1px solid #e5e7eb; background:#ffffff; color:#1f2937;
+      box-shadow:0 6px 16px rgba(210,153,83,0.14); cursor:pointer;
+      transition: background .15s ease, transform .05s ease, box-shadow .15s ease;
+      text-decoration:none;
+    }
+    #wizard .btn:hover { background:#fff7ed; }
+    #wizard .btn:active { transform:translateY(1px); }
+    #wizard .btn-ghost { background:#ffffff; border:1px solid rgba(0,0,0,0.06); box-shadow:0 6px 16px rgba(210,153,83,0.14); color:#1f2937; }
+    #wizard .btn-ghost:hover { background:#fff7ed; }
+    #wizard .btn-success-soft { background:#e8f7ee; border:1px solid rgba(16,185,129,0.35); color:#0b2b12; box-shadow:none; }
+    #wizard .btn-success-soft:hover { background:#dff3e7; }
+  </style>
+
+  <div class="wizard-header">
+    <h1>Home Details</h1>
+    <div class="wizard-actions">
+      <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">Back to Dashboard</a>
     </div>
-    
-    <button type="submit">Save & Generate Tasks</button>
-</form>
+  </div>
+
+  <div class="card">
+    <div class="inline" aria-live="polite">
+      <strong id="stepLabel">Step 1 of 6</strong>
+      <span class="muted" id="stepTitle">Home Basics</span>
+    </div>
+    <div class="progress" aria-hidden="true"><div class="bar" id="progressBar"></div></div>
+
+    <form id="questionnaireForm" method="POST">
+      <!-- Step 1: Home Basics -->
+      <div class="step active" data-title="Home Basics">
+        <h2>Step 1: Home Basics</h2>
+        <p class="muted">Let’s start with the basics about your home.</p>
+
+        <div class="form-group">
+          <label>Is your home a:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="home_type" value="single_family" required> Single-family house</label>
+            <label><input type="radio" name="home_type" value="condo_townhome"> Condo/Townhome</label>
+            <label><input type="radio" name="home_type" value="apartment_owned"> Apartment (owned)</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="year_built">Year built</label>
+          <select id="year_built" name="year_built" required>
+            <option value="" disabled selected>Select decade</option>
+            <option value="pre1950">Before 1950</option>
+            <option value="1950s">1950s</option>
+            <option value="1960s">1960s</option>
+            <option value="1970s">1970s</option>
+            <option value="1980s">1980s</option>
+            <option value="1990s">1990s</option>
+            <option value="2000s">2000s</option>
+            <option value="2010s">2010s</option>
+            <option value="2020s">2020s</option>
+          </select>
+          <div class="hint">You can refine later if needed.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Approximate size:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="home_size" value="lt_1000" required> Less than 1,000 sq ft</label>
+            <label><input type="radio" name="home_size" value="1000_2000"> 1,000–2,000 sq ft</label>
+            <label><input type="radio" name="home_size" value="2000_3000"> 2,000–3,000 sq ft</label>
+            <label><input type="radio" name="home_size" value="gt_3000"> 3,000+ sq ft</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Do you have a yard/outdoor space?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="has_yard" value="yes" required> Yes</label>
+            <label><input type="radio" name="has_yard" value="no"> No</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Do you have carpet in your home?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="carpet" value="yes" required> Yes</label>
+            <label><input type="radio" name="carpet" value="no"> No</label>
+            <label><input type="radio" name="carpet" value="some"> Some rooms</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Systems & Utilities (placeholder 4–6 questions) -->
+      <div class="step" data-title="Key Systems">
+        <h2>Step 2: Key Systems</h2>
+        <p class="muted">Now, let’s see what systems keep your home running.</p>
+
+        <div class="form-group">
+          <label>Heating & Cooling:</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" name="has_hvac"> Central HVAC system</label>
+            <label><input type="checkbox" name="has_window_units"> Window/mini-split units</label>
+            <label><input type="checkbox" name="has_radiator_boiler"> Radiator/boiler system</label>
+            <label><input type="checkbox" name="no_central_hvac"> None</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Water System:</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" name="has_water_heater"> Water heater</label>
+            <label><input type="checkbox" name="has_water_softener"> Water softener</label>
+            <label><input type="checkbox" name="has_well"> Well water</label>
+            <label><input type="checkbox" name="has_septic"> Septic system</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Sump pump?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="has_sump_pump" value="yes"> Yes</label>
+            <label><input type="radio" name="has_sump_pump" value="no"> No</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Fireplace:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="fireplace_type" value="wood"> Wood-burning</label>
+            <label><input type="radio" name="fireplace_type" value="gas"> Gas</label>
+            <label><input type="radio" name="fireplace_type" value="none" checked> None</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Kitchen & Laundry (placeholder) -->
+      <div class="step" data-title="Appliances">
+        <h2>Step 3: Appliances</h2>
+        <p class="muted">Which of these do you have in your home?</p>
+        <div class="checkbox-group">
+          <label><input type="checkbox" name="has_dishwasher"> Dishwasher</label>
+          <label><input type="checkbox" name="has_garbage_disposal"> Garbage Disposal</label>
+          <label><input type="checkbox" name="has_washer_dryer"> Washer/Dryer</label>
+          <label><input type="checkbox" name="has_refrigerator_ice"> Refrigerator with water/ice dispenser</label>
+          <label><input type="checkbox" name="has_range_hood"> Range Hood</label>
+        </div>
+      </div>
+
+      <!-- Step 4: Exterior (placeholder) -->
+      <div class="step" data-title="Exterior Features">
+        <h2>Step 4: Exterior Features</h2>
+        <p class="muted">A few questions about the outside of your home.</p>
+        <div class="form-group">
+          <label>Gutters</label>
+          <div class="radio-group">
+            <label><input type="radio" name="has_gutters" value="yes"> Yes</label>
+            <label><input type="radio" name="has_gutters" value="no"> No</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Garage</label>
+          <div class="radio-group">
+            <label><input type="radio" name="garage_type" value="attached"> Attached</label>
+            <label><input type="radio" name="garage_type" value="detached"> Detached</label>
+            <label><input type="radio" name="garage_type" value="none" checked> None</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Deck or patio</label>
+          <div class="radio-group">
+            <label><input type="radio" name="has_deck_patio" value="yes"> Yes</label>
+            <label><input type="radio" name="has_deck_patio" value="no"> No</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Pool or hot tub</label>
+          <div class="radio-group">
+            <label><input type="radio" name="has_pool_hot_tub" value="yes"> Yes</label>
+            <label><input type="radio" name="has_pool_hot_tub" value="no"> No</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: Safety (placeholder) -->
+      <div class="step" data-title="Seasons & Climate">
+        <h2>Step 5: Seasons & Climate</h2>
+        <p class="muted">Let’s tailor your tasks to your climate.</p>
+        <div class="form-group">
+          <label>Does it snow/freeze where you live?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="freezes" value="yes"> Yes</label>
+            <label><input type="radio" name="freezes" value="no"> No</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>When do you typically consider the start of each season?</label>
+          <div class="inline" style="flex-wrap:wrap; gap:14px;">
+            <div><label>Spring</label><input type="date" name="season_spring"></div>
+            <div><label>Summer</label><input type="date" name="season_summer"></div>
+            <div><label>Fall</label><input type="date" name="season_autumn"></div>
+            <div><label>Winter</label><input type="date" name="season_winter"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: Water & Waste (placeholder) -->
+      <div class="step" data-title="Lifestyle & Extras (Optional)">
+        <h2>Step 6: Lifestyle & Extras (Optional)</h2>
+        <p class="muted">Last step — a couple of extras to make things more personal.</p>
+        <div class="form-group">
+          <label>Do you have pets?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="has_pets" value="yes"> Yes</label>
+            <label><input type="radio" name="has_pets" value="no"> No</label>
+          </div>
+          <div class="inline" style="margin-top:8px; gap:14px;">
+            <label><input type="checkbox" name="pet_dog"> Dog</label>
+            <label><input type="checkbox" name="pet_cat"> Cat</label>
+            <label><input type="checkbox" name="pet_other"> Other</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Do you travel often or spend extended time away from home?</label>
+          <div class="radio-group">
+            <label><input type="radio" name="travel_often" value="yes"> Yes</label>
+            <label><input type="radio" name="travel_often" value="no"> No</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Success screen (shown after final step submit) -->
+      <div class="step" id="successStep" data-title="All set!">
+        <div class="success">
+          <h2>Great! We’ll build your maintenance plan</h2>
+          <p class="muted">Hang tight while we prepare tasks tailored to your home.</p>
+          <button type="submit" id="finalSubmit" class="btn btn-success-soft">Build my plan</button>
+        </div>
+      </div>
+
+      <div class="nav-buttons">
+        <div class="left">
+          <button type="button" id="backBtn" class="btn btn-ghost">Back</button>
+        </div>
+        <div class="right">
+          <button type="button" id="nextBtn" class="btn">Next</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    (function(){
+      const form = document.getElementById('questionnaireForm');
+      const steps = Array.from(form.querySelectorAll('.step'));
+      const successStep = document.getElementById('successStep');
+      const backBtn = document.getElementById('backBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const stepLabel = document.getElementById('stepLabel');
+      const stepTitle = document.getElementById('stepTitle');
+      const progressBar = document.getElementById('progressBar');
+      const totalSteps = 6; // content steps (exclude success)
+      let index = 0; // 0..5 are content steps
+
+      function show(i){
+        steps.forEach((s, idx)=>{
+          s.classList.toggle('active', idx === i);
+        });
+        const title = steps[i].dataset.title || '';
+        stepLabel.textContent = `Step ${Math.min(i+1, totalSteps)} of ${totalSteps}`;
+        stepTitle.textContent = title;
+        const pct = Math.min(((i) / totalSteps) * 100, 100);
+        progressBar.style.width = pct + '%';
+        backBtn.style.visibility = i === 0 ? 'hidden' : 'visible';
+        nextBtn.textContent = (i === totalSteps - 1) ? 'Review' : 'Next';
+      }
+
+      function goNext(){
+        // Validate required fields on current step
+        const current = steps[index];
+        const required = Array.from(current.querySelectorAll('[required]'));
+        for(const el of required){
+          if((el.type === 'radio' || el.type === 'checkbox')){
+            const named = current.querySelectorAll(`[name="${el.name}"]`);
+            if(!Array.from(named).some(n => n.checked)) { el.reportValidity(); return; }
+          } else if(!el.value) { el.reportValidity(); return; }
+        }
+
+        if(index < totalSteps - 1){
+          index++;
+          show(index);
+        } else {
+          // show success step
+          index = steps.indexOf(successStep);
+          show(index);
+          // disable nav when on success
+          backBtn.style.visibility = 'hidden';
+          nextBtn.style.visibility = 'hidden';
+          progressBar.style.width = '100%';
+          stepLabel.textContent = 'All set';
+          stepTitle.textContent = 'Ready to build your plan';
+        }
+      }
+
+      function goBack(){
+        if(index > 0 && index <= totalSteps - 1){
+          index--;
+          show(index);
+        }
+      }
+
+      backBtn.addEventListener('click', goBack);
+      nextBtn.addEventListener('click', goNext);
+      show(index);
+    })();
+  </script>
+</section>
 {% endblock %}

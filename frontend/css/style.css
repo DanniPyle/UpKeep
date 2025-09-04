@@ -163,7 +163,6 @@
   -webkit-backdrop-filter: saturate(180%) blur(12px);
 }
 .panel-title { margin: 0 0 10px; font-size: 14px; color: var(--text-sec, #6b7280); font-weight: 600; }
-.overview { margin-bottom: 16px; }
 .overview-tiles {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -213,26 +212,159 @@
 /* =============================== */
 /* Urgent Attention card           */
 /* =============================== */
-.urgent { margin-bottom: 16px; }
 .urgent .card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0; /* header/body handle their own padding like task cards */
   border-radius: 18px;
   border: 2px solid rgba(180, 35, 24, 0.25);
   background: rgba(255, 255, 255, 0.7);
   box-shadow: 0 12px 36px rgba(180, 35, 24, 0.12);
   backdrop-filter: saturate(180%) blur(12px);
   -webkit-backdrop-filter: saturate(180%) blur(12px);
+  overflow: hidden; /* mirror task-card rounded containment */
+}
+.urgent .card .card-header {
+  position: relative;
+  padding: 14px 18px 10px 18px; /* tightened bottom padding */
+  color: var(--text);
+  background: rgba(180, 35, 24, 0.10);
+}
+.urgent .card .card-header .title { font-weight: 800; font-size: 20px; color: var(--text); }
+.urgent .card .card-header .desc { margin-top: 4px; opacity: 0.95; font-weight: 500; color: var(--text-sec); }
+.urgent .card .card-header .corner-dot {
+  position: absolute; right: 12px; top: 12px; width: 10px; height: 10px; border-radius: 50%;
+  background: rgba(255,255,255,0.8); box-shadow: 0 0 10px rgba(255,255,255,0.6);
+}
+.urgent .card .card-body {
+  padding: 0 16px 14px 16px; /* no top padding so body touches header */
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.urgent .card .card-body { flex-wrap: wrap; }
+.urgent .card .card-body .text { flex: 1 1 220px; }
+.urgent .card .card-body .info {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 8px 0; /* remove top margin to eliminate white gap under header */
+}
+.urgent .card .card-body .info-item .label {
+  font-size: 12px;
+  color: var(--text-sec);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.urgent .card .card-body .info-item .value {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+}
+.urgent .badge.freq { background: #e8eef7; color: #1f3a5f; border-radius: 10px; padding: 4px 8px; font-weight: 600; font-size: 12px; display: inline-block; }
+
+@media (max-width: 640px) {
+  .urgent .card .card-body .info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .urgent .title { font-weight: 700; color: #1f2937; }
 .urgent .subtitle { color: #6b7280; font-size: 13px; }
-.urgent .actions { display: flex; gap: 8px; }
-.urgent .actions .btn { padding: 8px 10px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.08); background: #fff; }
-.urgent .actions .primary { background: #ef4444; color: white; border-color: transparent; }
-.urgent .actions .ghost { background: transparent; }
+.urgent .text { flex: 1 1 auto; min-width: 0; }
+.urgent .actions { flex: 0 1 auto; }
+.urgent .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.urgent .actions .btn { height: 38px; padding: 0 14px; border-radius: 14px; border: 1px solid rgba(0,0,0,0.08); background: #fff; display: inline-flex; align-items: center; gap: 6px; color: #1f2937; white-space: nowrap; box-shadow: 0 4px 12px rgba(210,153,83,0.12); font-weight: 600; font-size: 14px; }
+.urgent .actions .primary {
+  background: #e8f7ee; /* soft success tint */
+  color: #0b2b12;
+  border-color: rgba(16,185,129,0.35);
+  box-shadow: none;
+}
+.urgent .actions .primary:hover {
+  background: #dff3e7;
+  box-shadow: none;
+}
+.urgent .actions .ghost { background: #ffffff; border-color: rgba(0,0,0,0.06); box-shadow: 0 6px 16px rgba(210,153,83,0.14); }
+.urgent .actions .ghost:hover { background: #fff7ed; }
+
+/* Match urgent card icons to task card icon sizing */
+.urgent .actions .icon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  color: currentColor; /* inherit button text color */
+  vertical-align: -2px;
+}
+/* Subtle default for ghost buttons in urgent; sharpen on hover */
+.urgent .actions .ghost .icon { opacity: 0.85; }
+.urgent .actions .ghost:hover .icon { opacity: 1; }
+
+
+/* Quick Actions (below hero) */
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 20px;
+}
+.quick-actions .quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;            /* larger touch target */
+  min-height: 56px;              /* mockup-like size */
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  font-weight: 700;
+  font-size: 16px;
+}
+.quick-actions .quick-btn:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.08);
+}
+.quick-actions .quick-btn:active { transform: translateY(0); }
+.quick-actions .quick-btn .qa-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff3e0;          /* warm accent bubble */
+  color: #b45309;               /* warm icon color */
+  font-weight: 800;
+  line-height: 1;
+}
+@media (max-width: 640px) {
+  .quick-actions .quick-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Layout: Top panels (Overview + Urgent) side-by-side with matched heights */
+.top-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch; /* grid items match tallest */
+}
+.top-panels > section {
+  display: flex; /* allow child panel-card to stretch */
+}
+.top-panels > section .panel-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
 
 /* Final override: keep variables light when OS is dark */
 @media (prefers-color-scheme: dark) {
@@ -370,7 +502,7 @@
 .task-card {
   border-radius: var(--radius);
   overflow: hidden;
-  /* background: var(--card); */
+  background: var(--card);
   border: 2px solid rgba(210, 153, 83, 0.22);
   box-shadow: 0 8px 22px rgba(210, 153, 83, 0.14);
 }
@@ -378,28 +510,35 @@
 .task-card .card-header {
   position: relative;
   padding: 16px 18px 14px 18px;
-  color: #fff;
-  background: linear-gradient(180deg, #fbbf24 0%, #edaa36 100%);
+  color: var(--text);
+  background: var(--card); /* default; status variants below apply subtle tints */
 }
-.task-card.overdue .card-header { background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%); }
-.task-card.upcoming .card-header { background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%); }
-.task-card.future .card-header { background: linear-gradient(180deg, #e8d3bd 0%, #d6b795 100%); }
-.task-card.completed .card-header { background: linear-gradient(180deg, #86efac 0%, #22c55e 100%); }
+/* Use gentle tints that match the overview tiles' border hues */
+.task-card.urgent .card-header,
+.task-card .card-header.urgent { background: rgba(180, 35, 24, 0.10); }
+.task-card.urgent .card-header { padding-bottom: 10px; border-bottom: none; }
+.task-card.overdue .card-header   { background: rgba(180, 35,  24, 0.10); }
+.task-card.upcoming .card-header  { background: rgba(245, 158, 11, 0.12); }
+.task-card.future .card-header    { background: rgba(59, 130, 246, 0.10); }
+.task-card.completed .card-header { background: rgba( 16, 185,129, 0.12); }
 
 /* Subtle state-colored borders to echo overview tiles */
+.task-card.urgent { border-color: rgba(180, 35, 24, 0.25); }
 .task-card.overdue { border-color: rgba(180, 35, 24, 0.25); }
 .task-card.upcoming { border-color: rgba(245, 158, 11, 0.30); }
-.task-card.future { border-color: rgba(214, 183, 149, 0.35); }
+.task-card.future { border-color: rgba(59, 130, 246, 0.28); }
 .task-card.completed { border-color: rgba(16, 185, 129, 0.30); }
 
 .task-card .card-header .title {
   font-weight: 800;
   font-size: 20px;
+  color: var(--text);
 }
 .task-card .card-header .desc {
   margin-top: 6px;
   opacity: 0.95;
   font-weight: 500;
+  color: var(--text-sec);
 }
 .task-card .card-header .corner-dot {
   position: absolute;
@@ -416,10 +555,11 @@
   padding: 14px 16px 16px 16px;
   background: var(--card);
 }
+.task-card.urgent .card-body { padding-top: 10px; }
 
 .task-card .info {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 .task-card .info-item .label {
@@ -441,25 +581,71 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+/* Match urgent button shape/spacing on task cards (buttons use specific classes, not .btn) */
+.task-card .actions .complete-btn,
+.task-card .actions .snooze-btn,
+.task-card .actions .edit-btn,
+.task-card .actions .history-btn,
+.task-card .actions .reset-btn {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1f2937;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(210,153,83,0.12);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Complete button uses soft success variant */
+.task-card .actions .complete-btn {
+  background: #e8f7ee;
+  border-color: rgba(16,185,129,0.35);
+  color: #0b2b12;
+  box-shadow: none; /* override base .actions button shadow */
+}
+.task-card .actions .complete-btn:hover { background: #dff3e7; }
+
+/* Ghost buttons like urgent */
+.task-card .actions .snooze-btn.ghost,
+.task-card .actions .edit-btn.ghost,
+.task-card .actions .history-btn.ghost,
+.task-card .actions .reset-btn.ghost {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.06);
+  box-shadow: 0 6px 16px rgba(210,153,83,0.14);
+}
+.task-card .actions .snooze-btn.ghost:hover,
+.task-card .actions .edit-btn.ghost:hover,
+.task-card .actions .history-btn.ghost:hover,
+.task-card .actions .reset-btn.ghost:hover { background: #fff7ed; }
 
 /* Small icons for action buttons */
 .task-card .actions .icon {
   width: 14px;
   height: 14px;
   display: inline-block;
+  color: currentColor; /* inherit button text color */
   vertical-align: -2px;
-  margin-right: 6px;
-  fill: currentColor;
 }
 
-/* Primary button tweak for card */
+/* Subtle default for ghost buttons in task cards; sharpen on hover */
+.task-card .actions .ghost .icon { opacity: 0.85; }
+.task-card .actions .ghost:hover .icon { opacity: 1; }
+
+/* Primary button tweak for card (ensure consistency) */
 .task-card .complete-btn {
-  background: var(--success);
-  border: none;
+  background: #e8f7ee;
+  border: 1px solid rgba(16,185,129,0.35);
   color: #0b2b12;
-  box-shadow: 0 6px 16px rgba(52,199,89,0.35);
+  box-shadow: none;
 }
-.task-card .complete-btn:hover { filter: brightness(0.96); }
+.task-card .complete-btn:hover { background: #dff3e7; }
 
 /* Badge frequency inside card */
 .task-card .badge.freq {
@@ -649,6 +835,14 @@ textarea {
     color: var(--text);
 }
 
+/* Modal header title to match card titles */
+.modal .modal-header h3 {
+    margin: 0;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+}
+
 .modal .modal-body {
     padding: 16px;
     max-height: 60vh;
@@ -663,6 +857,50 @@ textarea {
     gap: 10px;
     justify-content: flex-end;
 }
+
+/* Modal buttons: match task card/urgent shapes */
+.modal .modal-header button,
+.modal .modal-actions button {
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Ghost-style for header close buttons */
+.modal .modal-header button {
+    background: #ffffff;
+    color: #1f2937;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 6px 16px rgba(210,153,83,0.14);
+}
+.modal .modal-header button:hover { background: #fff7ed; }
+
+/* Primary save button in footer: match task card complete (soft success) */
+#edit-save,
+#history-save {
+    background: #e8f7ee;
+    color: #0b2b12;
+    border: 1px solid rgba(16,185,129,0.35);
+    box-shadow: none;
+}
+#edit-save:hover,
+#history-save:hover { background: #dff3e7; }
+
+/* Footer cancel buttons use ghost style */
+#edit-cancel,
+#close-history {
+    background: #ffffff;
+    color: #1f2937;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 6px 16px rgba(210,153,83,0.14);
+}
+#edit-cancel:hover,
+#close-history:hover { background: #fff7ed; }
 
 .badge.priority.low { background: #e7f3ff; color: #0b5ed7; }
 .badge.priority.medium { background: #fff3cd; color: #664d03; }
@@ -697,6 +935,51 @@ textarea {
     min-height: 14px;
 }
 
+/* Home Details (questionnaire) scoped styles */
+.home-details { margin-top: 8px; }
+.home-details .hd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.home-details .hd-actions { display: flex; gap: 10px; }
+.home-details .hd-actions.footer { margin-top: 14px; justify-content: flex-end; }
+
+/* Muted, square-with-rounded-corners buttons (override pill globals) */
+.home-details .hd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px; /* square-ish */
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+}
+.home-details .hd-btn:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+}
+.home-details .hd-btn.primary {
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+.home-details .hd-btn.primary:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+.home-details .hd-btn.ghost {
+  background: #ffffff;
+}
+.home-details .hd-btn.ghost:hover { background: #fff7ed; }
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
     /* Warm gold/peach gradient background */
@@ -705,6 +988,10 @@ body {
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+input, select, textarea {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
 .container {
@@ -725,7 +1012,6 @@ body {
 .auth-tabs {
     display: flex;
     margin-bottom: 20px;
-    border-bottom: 1px solid #ddd;
 }
 
 .tab-button {
@@ -738,9 +1024,19 @@ body {
     border-bottom: 2px solid transparent;
 }
 
-.tab-button.active {
-    border-bottom-color: var(--accent);
-    color: var(--accent);
+.tab-button.active {display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 12px; /* square-ish */
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
 }
 
 .auth-form {
@@ -775,20 +1071,35 @@ textarea {
     color: var(--text);
 }
 
-button {
-    background: var(--accent);
-    color: #fff;
-    padding: 10px 18px;
-    border: none;
-    border-radius: 999px;
+/* Global button baseline: match task-card shape & neutral ghost style */
+button,
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: #1f2937;
+    box-shadow: 0 6px 16px rgba(210,153,83,0.14);
     cursor: pointer;
-    font-size: 16px;
-    transition: background 0.15s ease, transform 0.05s ease;
-    box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 6px 12px rgba(10,132,255,0.25);
+    transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
 }
+button:hover,
+.btn:hover { background: #fff7ed; }
+button:active,
+.btn:active { transform: translateY(1px); }
 
-button:hover { background: var(--accent-press); }
-button:active { transform: translateY(1px); }
+/* Utility variants */
+.btn-ghost { background: #ffffff; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 6px 16px rgba(210,153,83,0.14); color: #1f2937; }
+.btn-ghost:hover { background: #fff7ed; }
+
+.btn-success-soft { background: #e8f7ee; border: 1px solid rgba(16,185,129,0.35); color: #0b2b12; box-shadow: none; }
+.btn-success-soft:hover { background: #dff3e7; }
 
 .nav {
     display: flex;
@@ -885,9 +1196,13 @@ h1, h2 { color: var(--text); margin-bottom: 20px; }
     font-size: 13px;
 }
 
-.complete-btn { background-color: var(--success); box-shadow: 0 6px 12px rgba(52,199,89,0.25); }
-
-.complete-btn:hover { background-color: #22b654; }
+.complete-btn {
+  background-color: #e8f7ee;
+  color: #0b2b12;
+  border: 1px solid rgba(16,185,129,0.35);
+  box-shadow: none;
+}
+.complete-btn:hover { background-color: #dff3e7; }
 
 .reset-btn { background-color: var(--warn); color: #111827; }
 
@@ -1026,7 +1341,6 @@ h1, h2 { color: var(--text); margin-bottom: 20px; }
 .issues .issue-list { margin-left: 18px; color: #7a7a7a; }
 
 .preview .preview-row { padding: 4px 0; color: #333; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 .dim { color: #6c757d; }
 .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; background: #eef2ff; color: #3730a3; font-size: 12px; }
 .link { color: #0b5ed7; text-decoration: none; }

@@ -15,7 +15,18 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this')
+# Ensure updated templates/static are reflected without full restart during development
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
+
+@app.after_request
+def add_no_cache_headers(resp):
+    # Prevent browsers from caching HTML so users don't see the old questionnaire UI
+    if resp.mimetype == 'text/html':
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 # Supabase configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -476,20 +487,34 @@ def questionnaire():
     if request.method == 'POST':
         user_id = session['user_id']
         
+        # Helper to interpret checkbox/radio values uniformly
+        def _is_checked(name, default=False):
+            v = request.form.get(name)
+            if v is None:
+                return default
+            s = str(v).strip().lower()
+            return s in ('on', 'true', '1', 'yes', 'y')
+
+        # Map new wizard inputs (including radios) to existing boolean feature flags
+        fireplace_type = (request.form.get('fireplace_type') or 'none').strip().lower()
+        garage_type = (request.form.get('garage_type') or 'none').strip().lower()
+
         features = {
-            'has_hvac': 'has_hvac' in request.form,
-            'has_gutters': 'has_gutters' in request.form,
-            'has_dishwasher': 'has_dishwasher' in request.form,
-            'has_smoke_detectors': 'has_smoke_detectors' in request.form,
-            'has_water_heater': 'has_water_heater' in request.form,
-            'has_water_softener': 'has_water_softener' in request.form,
-            'has_garbage_disposal': 'has_garbage_disposal' in request.form,
-            'has_washer_dryer': 'has_washer_dryer' in request.form,
-            'has_sump_pump': 'has_sump_pump' in request.form,
-            'has_well': 'has_well' in request.form,
-            'has_fireplace': 'has_fireplace' in request.form,
-            'has_septic': 'has_septic' in request.form,
-            'has_garage': 'has_garage' in request.form,
+            'has_hvac': _is_checked('has_hvac'),
+            'has_gutters': _is_checked('has_gutters'),  # supports radio yes/no
+            'has_dishwasher': _is_checked('has_dishwasher'),
+            'has_smoke_detectors': _is_checked('has_smoke_detectors'),
+            'has_water_heater': _is_checked('has_water_heater'),
+            'has_water_softener': _is_checked('has_water_softener'),
+            'has_garbage_disposal': _is_checked('has_garbage_disposal'),
+            'has_washer_dryer': _is_checked('has_washer_dryer'),
+            'has_sump_pump': _is_checked('has_sump_pump'),  # supports radio yes/no
+            'has_well': _is_checked('has_well'),
+            # Fireplace true if wood/gas selected or legacy checkbox provided
+            'has_fireplace': (fireplace_type in ('wood', 'gas')) or _is_checked('has_fireplace'),
+            'has_septic': _is_checked('has_septic'),
+            # Garage true if attached/detached selected or legacy checkbox provided
+            'has_garage': (garage_type in ('attached', 'detached')) or _is_checked('has_garage'),
         }
         
         try:
@@ -1247,6 +1272,7 @@ def api_update_task(current_user_id, task_id):
         frequency_days = data.get('frequency_days')
         priority = data.get('priority')
         category = data.get('category')
+        next_due_date = data.get('next_due_date')  # optional ISO date string YYYY-MM-DD
         
         if not title or not frequency_days:
             return jsonify({'error': 'Title and frequency are required'}), 400
@@ -1264,14 +1290,28 @@ def api_update_task(current_user_id, task_id):
         if not task_result.data:
             return jsonify({'error': 'Task not found'}), 404
         
-        # Update task
-        result = supabase.table('tasks').update({
+        # Validate optional next_due_date if provided
+        update_payload = {
             'title': title,
             'description': description,
             'frequency_days': frequency_days,
             'priority': priority,
             'category': category
-        }).eq('id', task_id).eq('user_id', current_user_id).execute()
+        }
+        if next_due_date:
+            try:
+                # Normalize to date ISO format
+                nd = datetime.fromisoformat(next_due_date)
+                update_payload['next_due_date'] = nd.date().isoformat()
+            except ValueError:
+                try:
+                    nd = datetime.strptime(next_due_date, '%Y-%m-%d')
+                    update_payload['next_due_date'] = nd.date().isoformat()
+                except ValueError:
+                    return jsonify({'error': 'next_due_date must be an ISO date (YYYY-MM-DD)'}), 400
+
+        # Update task
+        result = supabase.table('tasks').update(update_payload).eq('id', task_id).eq('user_id', current_user_id).execute()
         
         if result.data:
             return jsonify({'message': 'Task updated successfully', 'task': result.data[0]})
