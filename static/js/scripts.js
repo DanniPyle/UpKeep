@@ -15,6 +15,17 @@ const flashMessages = document.getElementById('flash-messages');
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
+    const isMpa = !document.getElementById('auth-section') && !!document.getElementById('dashboard-section');
+    if (isMpa) {
+        // In MPA we rely on server session and server-rendered pages.
+        // Do not run SPA auth flows; only attach safe UI listeners.
+        setupEventListeners();
+        // Set greeting if present
+        const heroGreeting = document.getElementById('hero-greeting');
+        if (heroGreeting) heroGreeting.textContent = getTimeOfDayGreeting();
+        return;
+    }
+    // SPA mode
     initializeApp();
     setupEventListeners();
 });
@@ -52,7 +63,7 @@ function buildTaskCard(task, options = {}) {
     const { statusClass = '', dueLabel = '', isUrgent = false, taskType = '' } = options;
     const priorityRaw = task.priority ? String(task.priority) : '';
     const priority = priorityRaw.toLowerCase();
-    const freq = task.frequency_days ? `Every ${task.frequency_days} days` : '';
+    const freq = task.frequency_days ? `${task.frequency_days} days` : '';
     const headerClass = isUrgent ? 'urgent' : '';
 
     // Actions differ for completed vs other types
@@ -280,19 +291,28 @@ function closeHistoryModal() {
 }
 
 function setupEventListeners() {
-    // Auth tabs
-    document.getElementById('login-tab').addEventListener('click', () => showLoginForm());
-    document.getElementById('register-tab').addEventListener('click', () => showRegisterForm());
+    const isMpa = !document.getElementById('auth-section') && !!document.getElementById('dashboard-section');
+    // Auth tabs (SPA only)
+    const loginTab = document.getElementById('login-tab');
+    const registerTab = document.getElementById('register-tab');
+    if (loginTab) loginTab.addEventListener('click', () => showLoginForm());
+    if (registerTab) registerTab.addEventListener('click', () => showRegisterForm());
     
-    // Auth forms
-    document.getElementById('login-form').addEventListener('submit', handleLogin);
-    document.getElementById('register-form').addEventListener('submit', handleRegister);
+    // Auth forms (SPA only)
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    if (loginForm) loginForm.addEventListener('submit', handleLogin);
+    if (registerForm) registerForm.addEventListener('submit', handleRegister);
     
     // Navigation
-    document.getElementById('questionnaire-btn').addEventListener('click', showQuestionnaire);
-    document.getElementById('back-to-dashboard').addEventListener('click', showDashboard);
-    document.getElementById('logout-btn').addEventListener('click', handleLogout);
-    document.getElementById('logout-btn-2').addEventListener('click', handleLogout);
+    const questionnaireBtn = document.getElementById('questionnaire-btn');
+    const backToDashboardBtn = document.getElementById('back-to-dashboard');
+    const logoutBtn = document.getElementById('logout-btn');
+    const logoutBtn2 = document.getElementById('logout-btn-2');
+    if (questionnaireBtn) questionnaireBtn.addEventListener('click', showQuestionnaire);
+    if (backToDashboardBtn) backToDashboardBtn.addEventListener('click', showDashboard);
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+    if (logoutBtn2) logoutBtn2.addEventListener('click', handleLogout);
 
     // User menu (avatar dropdown)
     const userMenuToggle = document.getElementById('user-menu-toggle');
@@ -326,79 +346,86 @@ function setupEventListeners() {
     }
     
     // Questionnaire
-    document.getElementById('questionnaire-form').addEventListener('submit', handleQuestionnaire);
+    const questionnaireForm = document.getElementById('questionnaire-form');
+    if (questionnaireForm) questionnaireForm.addEventListener('submit', handleQuestionnaire);
 
-    // Filters
-    const applyBtn = document.getElementById('apply-filters');
-    const clearBtn = document.getElementById('clear-filters');
-    const filterSearch = document.getElementById('filter-search');
-    const heroSearch = document.getElementById('hero-search');
-    const heroSearchForm = document.getElementById('hero-search-form');
-    // Debounce helper for live filtering
-    const debounce = (fn, delay = 300) => {
-        let t;
-        return (...args) => {
-            clearTimeout(t);
-            t = setTimeout(() => fn.apply(null, args), delay);
+    // Filters: Disable API-bound filters in MPA to avoid token-required endpoints
+    if (!isMpa) {
+        const applyBtn = document.getElementById('apply-filters');
+        const clearBtn = document.getElementById('clear-filters');
+        const filterSearch = document.getElementById('filter-search');
+        const heroSearch = document.getElementById('hero-search');
+        const heroSearchForm = document.getElementById('hero-search-form');
+        // Debounce helper for live filtering
+        const debounce = (fn, delay = 300) => {
+            let t;
+            return (...args) => {
+                clearTimeout(t);
+                t = setTimeout(() => fn.apply(null, args), delay);
+            };
         };
-    };
-    const debouncedLoad = debounce(() => loadDashboardData(), 300);
-    // Keep hero search and filter search in sync
-    if (heroSearch && filterSearch) {
-        // Initialize hero search with existing filter value
-        heroSearch.value = filterSearch.value || '';
-        heroSearch.addEventListener('input', () => {
-            filterSearch.value = heroSearch.value;
-            debouncedLoad();
-        });
-        heroSearch.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                loadDashboardData();
+        const debouncedLoad = debounce(() => loadDashboardData(), 300);
+        // Keep hero search and filter search in sync
+        if (heroSearch && filterSearch) {
+            // Initialize hero search with existing filter value
+            heroSearch.value = filterSearch.value || '';
+            heroSearch.addEventListener('input', () => {
+                filterSearch.value = heroSearch.value;
+                debouncedLoad();
+            });
+            heroSearch.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loadDashboardData();
+                }
+            });
+            if (heroSearchForm) {
+                heroSearchForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    loadDashboardData();
+                });
             }
+        }
+        // Typing in sidebar search should also live-filter and sync hero
+        if (filterSearch) {
+            filterSearch.addEventListener('input', () => {
+                if (heroSearch) heroSearch.value = filterSearch.value;
+                debouncedLoad();
+            });
+            filterSearch.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loadDashboardData();
+                }
+            });
+        }
+        // Advanced filters live updates
+        ['filter-category','filter-priority','filter-min-freq','filter-max-freq'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', debouncedLoad);
+            el.addEventListener('change', debouncedLoad);
         });
-        if (heroSearchForm) {
-            heroSearchForm.addEventListener('submit', (e) => {
-                e.preventDefault();
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
                 loadDashboardData();
             });
         }
-    }
-    // Typing in sidebar search should also live-filter and sync hero
-    if (filterSearch) {
-        filterSearch.addEventListener('input', () => {
-            if (heroSearch) heroSearch.value = filterSearch.value;
-            debouncedLoad();
-        });
-        filterSearch.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                document.getElementById('filter-search').value = '';
+                if (heroSearch) heroSearch.value = '';
+                const cat = document.getElementById('filter-category');
+                const pri = document.getElementById('filter-priority');
+                const minF = document.getElementById('filter-min-freq');
+                const maxF = document.getElementById('filter-max-freq');
+                if (cat) cat.value = '';
+                if (pri) pri.value = '';
+                if (minF) minF.value = '';
+                if (maxF) maxF.value = '';
                 loadDashboardData();
-            }
-        });
-    }
-    // Advanced filters live updates
-    ['filter-category','filter-priority','filter-min-freq','filter-max-freq'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener('input', debouncedLoad);
-        el.addEventListener('change', debouncedLoad);
-    });
-    if (applyBtn) {
-        applyBtn.addEventListener('click', () => {
-            loadDashboardData();
-        });
-    }
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            document.getElementById('filter-search').value = '';
-            if (heroSearch) heroSearch.value = '';
-            document.getElementById('filter-category').value = '';
-            document.getElementById('filter-priority').value = '';
-            document.getElementById('filter-min-freq').value = '';
-            document.getElementById('filter-max-freq').value = '';
-            loadDashboardData();
-        });
+            });
+        }
     }
 
     // History modal

@@ -1,0 +1,35 @@
+{% macro format_dt(ts) %}
+  {%- set display = ts -%}
+  {%- if ts and ts|length >= 10 -%}
+    {%- set display = ts[:19].replace('T', ' ') -%}
+  {%- endif -%}
+  {{ display }}
+{% endmacro %}
+
+<div class="history-wrap">
+  <div class="history-header">
+    <div class="title">History for: <strong>{{ task.title }}</strong></div>
+  </div>
+  {% if history and history|length %}
+    <ul class="history-list">
+      {% for h in history %}
+      <li class="history-item">
+        <div class="row-top">
+          <span class="action badge">{{ h.action|capitalize }}</span>
+          <span class="ts">{{ format_dt(h.created_at) }}</span>
+        </div>
+        <div class="row-sub">
+          {% if h.delta_days %}
+            <span class="sub">Delta: {{ h.delta_days }} days</span>
+          {% endif %}
+          {% if h.notes %}
+            <span class="sub">{{ h.notes }}</span>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No history entries yet.</p>
+  {% endif %}
+</div>

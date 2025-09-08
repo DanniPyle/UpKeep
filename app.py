@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from supabase import create_client
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os
 import jwt
 from functools import wraps
@@ -15,18 +15,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this')
-# Ensure updated templates/static are reflected without full restart during development
-app.config['TEMPLATES_AUTO_RELOAD'] = True
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
-
-@app.after_request
-def add_no_cache_headers(resp):
-    # Prevent browsers from caching HTML so users don't see the old questionnaire UI
-    if resp.mimetype == 'text/html':
-        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        resp.headers['Pragma'] = 'no-cache'
-    return resp
 
 # Supabase configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -36,6 +25,33 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Jinja filter: render due dates as Today / N days ago / YYYY-MM-DD
+@app.template_filter('due_label')
+def due_label(value):
+    """Format an ISO date string or date/datetime as a friendly due label.
+    - Today => "Today"
+    - Past => "N days ago"
+    - Future => YYYY-MM-DD
+    """
+    try:
+        if value in (None, ''):
+            return '-'
+        if isinstance(value, datetime):
+            d = value.date()
+        elif isinstance(value, date):
+            d = value
+        else:
+            d = datetime.fromisoformat(str(value)).date()
+        today = datetime.now().date()
+        diff = (today - d).days
+        if diff == 0:
+            return 'Today'
+        if diff > 0:
+            return f"{diff} days ago"
+        return d.isoformat()
+    except Exception:
+        return str(value)
 
 # JWT token decorator
 def token_required(f):
@@ -80,11 +96,22 @@ TASK_TEMPLATES = {
     'has_water_heater': [
         {'title': 'Flush Water Heater', 'description': 'Drain and flush water heater to remove sediment', 'frequency_days': 365},
         {'title': 'Check Water Heater Temperature', 'description': 'Ensure water heater is set to 120°F (49°C)', 'frequency_days': 180}
-    ]
+    ],
+    # Minimal additions to reflect new fields if CSV catalog is not present
+    'freezes': [
+        {'title': 'Insulate Outdoor Faucets', 'description': 'Install/inspect faucet covers before freezing temps', 'frequency_days': 365},
+    ],
+    'has_pets': [
+        {'title': 'Deep Clean Pet Areas', 'description': 'Clean pet bedding and vacuum hair in corners', 'frequency_days': 30},
+    ],
+    'has_range_hood': [
+        {'title': 'Degrease Range Hood Filter', 'description': 'Soak and clean the hood filter to improve airflow', 'frequency_days': 60},
+    ],
 }
 
 # --- Catalog import/validation constants & helpers ---
 ALLOWED_FEATURE_KEYS = {
+    # Core features
     'has_hvac',
     'has_gutters',
     'has_dishwasher',
@@ -98,6 +125,21 @@ ALLOWED_FEATURE_KEYS = {
     'has_fireplace',
     'has_septic',
     'has_garage',
+    # Extended boolean features added by wizard
+    'has_window_units',
+    'has_radiator_boiler',
+    'no_central_hvac',
+    'has_refrigerator_ice',
+    'has_range_hood',
+    'has_deck_patio',
+    'has_pool_hot_tub',
+    'freezes',
+    'has_pets',
+    'pet_dog',
+    'pet_cat',
+    'pet_other',
+    'travel_often',
+    'has_yard',
 }
 
 PRIORITY_VALUES = {'low', 'medium', 'high'}
@@ -406,6 +448,32 @@ def reactivate_due_tasks(user_id):
 def index():
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
+
+
+@app.route('/tasks/<int:task_id>/history')
+def task_history(task_id):
+    """Server-rendered partial for task history suitable to inject into modal body."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    user_id = session['user_id']
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    try:
+        # Verify task belongs to user and get minimal details
+        task_result = supabase.table('tasks').select('id,title').eq('id', task_id).eq('user_id', user_id).execute()
+        if not task_result.data:
+            return jsonify({'error': 'Task not found'}), 404
+        task = task_result.data[0]
+
+        # Load history entries (most recent first)
+        hist = supabase.table('task_history').select('*').eq('task_id', task_id).eq('user_id', user_id).order('created_at', desc=True).execute()
+        history = hist.data or []
+
+        # Render a small HTML snippet
+        html = render_template('partials/history_list.html', task=task, history=history)
+        return html
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     return render_template('index.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -516,6 +584,40 @@ def questionnaire():
             # Garage true if attached/detached selected or legacy checkbox provided
             'has_garage': (garage_type in ('attached', 'detached')) or _is_checked('has_garage'),
         }
+
+        # Extended fields to persist
+        extended = {
+            # Step 1: basics
+            'home_type': (request.form.get('home_type') or '').strip() or None,
+            'year_built': (request.form.get('year_built') or '').strip() or None,
+            'home_size': (request.form.get('home_size') or '').strip() or None,
+            'has_yard': _is_checked('has_yard'),
+            'carpet': (request.form.get('carpet') or '').strip() or None,
+            # Step 2: systems
+            'has_window_units': _is_checked('has_window_units'),
+            'has_radiator_boiler': _is_checked('has_radiator_boiler'),
+            'no_central_hvac': _is_checked('no_central_hvac'),
+            'fireplace_type': fireplace_type or None,
+            # Step 3: appliances
+            'has_refrigerator_ice': _is_checked('has_refrigerator_ice'),
+            'has_range_hood': _is_checked('has_range_hood'),
+            # Step 4: exterior
+            'garage_type': garage_type or None,
+            'has_deck_patio': _is_checked('has_deck_patio'),
+            'has_pool_hot_tub': _is_checked('has_pool_hot_tub'),
+            # Step 5: seasons & climate
+            'freezes': _is_checked('freezes'),
+            'season_spring': (request.form.get('season_spring') or None),
+            'season_summer': (request.form.get('season_summer') or None),
+            'season_autumn': (request.form.get('season_autumn') or None),
+            'season_winter': (request.form.get('season_winter') or None),
+            # Step 6: lifestyle
+            'has_pets': _is_checked('has_pets'),
+            'pet_dog': _is_checked('pet_dog'),
+            'pet_cat': _is_checked('pet_cat'),
+            'pet_other': _is_checked('pet_other'),
+            'travel_often': _is_checked('travel_often'),
+        }
         
         try:
             # Check if features already exist for this user
@@ -525,17 +627,26 @@ def questionnaire():
                 # Update existing features
                 supabase.table('home_features').update({
                     **features,
+                    **extended,
                     'user_id': user_id
                 }).eq('user_id', user_id).execute()
             else:
                 # Insert new features
                 supabase.table('home_features').insert({
                     'user_id': user_id,
-                    **features
+                    **features,
+                    **extended
                 }).execute()
             
-            # Generate tasks based on features
-            generate_tasks_for_user(user_id, features)
+            # Generate tasks based on features (include extended boolean flags)
+            combined_features = dict(features)
+            for k in ALLOWED_FEATURE_KEYS:
+                if k in combined_features:
+                    continue
+                v = extended.get(k)
+                if isinstance(v, bool):
+                    combined_features[k] = v
+            generate_tasks_for_user(user_id, combined_features)
             
             flash('Home features saved and tasks generated!')
             return redirect(url_for('dashboard'))
@@ -543,7 +654,16 @@ def questionnaire():
         except Exception as e:
             flash(f'Error saving features: {str(e)}')
     
-    return render_template('questionnaire.html')
+    # GET: prefill
+    user_id = session['user_id']
+    prefill = {}
+    try:
+        res = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
+        if res.data:
+            prefill = res.data[0]
+    except Exception as e:
+        print(f"Error loading home_features for prefill: {e}")
+    return render_template('questionnaire.html', prefill=prefill)
 
 def generate_tasks_for_user(user_id, features):
     try:
@@ -588,8 +708,44 @@ def dashboard():
                 upcoming.append(task)
             else:
                 future.append(task)
-        
+        # Overview metrics
+        next_week = today + timedelta(days=7)
+        upcoming_7 = [t for t in tasks if datetime.fromisoformat(t['next_due_date']).date() <= next_week and datetime.fromisoformat(t['next_due_date']).date() >= today]
+        # Completed in last 7 days
+        completed_last_7 = 0
+        for t in completed_tasks:
+            try:
+                if t.get('last_completed'):
+                    lc = datetime.fromisoformat(t['last_completed']).date()
+                    if (today - lc).days <= 7:
+                        completed_last_7 += 1
+            except Exception:
+                pass
+
+        overview = {
+            'total_active': len(tasks),
+            'overdue_count': len(overdue),
+            'due_7_days': len(upcoming_7),
+            'completed_7_days': completed_last_7,
+        }
+
+        # Urgent task: most overdue, else next due soonest
+        urgent_task = None
+        urgent_task_overdue = False
+        try:
+            if overdue:
+                urgent_task = sorted(overdue, key=lambda t: datetime.fromisoformat(t['next_due_date']))[0]
+                urgent_task_overdue = True
+            elif upcoming:
+                urgent_task = sorted(upcoming, key=lambda t: datetime.fromisoformat(t['next_due_date']))[0]
+        except Exception:
+            urgent_task = overdue[0] if overdue else (upcoming[0] if upcoming else None)
+            urgent_task_overdue = bool(overdue)
+
         return render_template('dashboard.html', 
+                             overview=overview,
+                             urgent_task=urgent_task,
+                             urgent_task_overdue=urgent_task_overdue,
                              overdue_tasks=overdue, 
                              upcoming_tasks=upcoming,
                              future_tasks=future,
@@ -674,6 +830,9 @@ def create_task():
     title = request.form['title']
     description = request.form.get('description', '')
     frequency_days = request.form['frequency_days']
+    next_due_date_raw = request.form.get('next_due_date')
+    priority_raw = (request.form.get('priority') or '').strip().lower()
+    category = (request.form.get('category') or '').strip() or None
     
     if not title or not frequency_days:
         flash('Title and frequency are required!')
@@ -687,6 +846,26 @@ def create_task():
     except ValueError:
         flash('Frequency must be a valid number!')
         return redirect(url_for('dashboard'))
+
+    # Validate/normalize optional fields
+    next_due_date = None
+    if next_due_date_raw is not None:
+        try:
+            # Expecting YYYY-MM-DD from <input type="date">; allow empty to clear skip update
+            if next_due_date_raw.strip():
+                d = date.fromisoformat(next_due_date_raw.strip())
+                next_due_date = d.isoformat()
+        except Exception:
+            flash('Due date must be a valid date (YYYY-MM-DD).')
+            return redirect(url_for('dashboard'))
+
+    priority = None
+    if priority_raw:
+        if priority_raw in PRIORITY_VALUES:
+            priority = priority_raw
+        else:
+            flash(f"Priority must be one of {sorted(PRIORITY_VALUES)}")
+            return redirect(url_for('dashboard'))
     
     try:
         # Calculate next due date
@@ -900,9 +1079,14 @@ def edit_task(task_id):
         return redirect(url_for('login'))
     
     user_id = session['user_id']
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     title = request.form['title']
     description = request.form.get('description', '')
     frequency_days = request.form['frequency_days']
+    # Optional fields
+    next_due_date_raw = request.form.get('next_due_date')
+    priority_raw = (request.form.get('priority') or '').strip().lower()
+    category = (request.form.get('category') or '').strip() or None
     
     if not title or not frequency_days:
         flash('Title and frequency are required!')
@@ -917,6 +1101,29 @@ def edit_task(task_id):
         flash('Frequency must be a valid number!')
         return redirect(url_for('dashboard'))
     
+    # Normalize optional fields prior to DB update
+    next_due_date = None
+    if next_due_date_raw is not None:
+        try:
+            if next_due_date_raw.strip():
+                d = date.fromisoformat(next_due_date_raw.strip())
+                next_due_date = d.isoformat()
+        except Exception:
+            if is_ajax:
+                return jsonify({'ok': False, 'error': 'Due date must be a valid date (YYYY-MM-DD).'}), 400
+            flash('Due date must be a valid date (YYYY-MM-DD).')
+            return redirect(url_for('dashboard'))
+
+    priority = None
+    if priority_raw:
+        if priority_raw in PRIORITY_VALUES:
+            priority = priority_raw
+        else:
+            if is_ajax:
+                return jsonify({'ok': False, 'error': f'Priority must be one of {sorted(PRIORITY_VALUES)}'}), 400
+            flash(f"Priority must be one of {sorted(PRIORITY_VALUES)}")
+            return redirect(url_for('dashboard'))
+
     try:
         # Verify task belongs to user
         task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
@@ -925,16 +1132,40 @@ def edit_task(task_id):
             flash('Task not found!')
             return redirect(url_for('dashboard'))
         
+        # Build update payload, only including keys that exist on the task record
+        row = task_result.data[0]
+        payload = {}
+        if 'title' in row: payload['title'] = title
+        if 'description' in row: payload['description'] = description
+        if 'frequency_days' in row: payload['frequency_days'] = frequency_days
+        if 'category' in row and category is not None:
+            payload['category'] = category
+        if next_due_date is not None and 'next_due_date' in row:
+            payload['next_due_date'] = next_due_date
+        # Only include priority if explicitly provided and valid and column exists
+        if priority is not None and 'priority' in row:
+            payload['priority'] = priority
+
         # Update task
-        supabase.table('tasks').update({
-            'title': title,
-            'description': description,
-            'frequency_days': frequency_days
-        }).eq('id', task_id).eq('user_id', user_id).execute()
-        
+        db_res = supabase.table('tasks').update(payload).eq('id', task_id).eq('user_id', user_id).execute()
+
+        if is_ajax:
+            # Include a snapshot of incoming form to debug client/server mismatch
+            form_snapshot = {k: v for k, v in request.form.items()}
+            return jsonify({
+                'ok': True,
+                'task_id': task_id,
+                'payload': payload,
+                'form': form_snapshot,
+                'db_result_count': len(db_res.data or []),
+                'columns_present': list(row.keys()),
+            })
+
         flash(f'Task "{title}" updated successfully!')
         
     except Exception as e:
+        if is_ajax:
+            return jsonify({'ok': False, 'error': str(e)}), 500
         flash(f'Error updating task: {str(e)}')
     
     return redirect(url_for('dashboard'))

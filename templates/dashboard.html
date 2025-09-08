@@ -1,127 +1,308 @@
 {% extends "base.html" %}
+{% block header %}{% endblock %}
 
 {% block content %}
-<h1>Your Home Maintenance Dashboard</h1>
+<div id="dashboard-section">
+                
 
-<div style="margin-bottom: 20px;">
-    <button onclick="showCreateTaskForm()" style="background-color: #28a745;">+ Create Custom Task</button>
-</div>
+    <!-- Hero Header -->
+    <section class="hero">
+        <div class="hero-text">
+            <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">{{ session.username or 'Friend' }}</span></h1>
+            <p class="sub">Helping you take care of your home, one step at a time</p>
+        </div>
+        <div class="hero-actions">
+            <form class="hero-search" id="hero-search-form" role="search" onsubmit="return false;">
+                <input id="hero-search" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" />
+            </form>
+            <div class="user-menu-wrap">
+                <button id="user-menu-toggle" class="avatar-btn" aria-haspopup="menu" aria-expanded="false" title="Account">
+                    <span id="avatar-initial">{{ (session.username[0]|upper) if session.username else 'U' }}</span>
+                </button>
+                <div id="user-menu" class="user-menu" role="menu">
+                    <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('questionnaire') }}">Update Home Features</a>
+                    <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('logout') }}">Logout</a>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<!-- Create Task Form (hidden by default) -->
-<div id="create-task-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-    <h3>Create New Task</h3>
-    <form action="{{ url_for('create_task') }}" method="POST">
-        <div class="form-group">
-            <label for="task-title">Task Name:</label>
-            <input type="text" id="task-title" name="title" required>
-        </div>
-        <div class="form-group">
-            <label for="task-description">Description:</label>
-            <textarea id="task-description" name="description" rows="3"></textarea>
-        </div>
-        <div class="form-group">
-            <label for="task-frequency">Frequency (days):</label>
-            <input type="number" id="task-frequency" name="frequency_days" min="1" required>
-            <small>How often should this task repeat? (e.g., 30 for monthly, 365 for yearly)</small>
-        </div>
-        <button type="submit" style="background-color: #28a745;">Create Task</button>
-        <button type="button" onclick="hideCreateTaskForm()" style="background-color: #6c757d;">Cancel</button>
-    </form>
-</div>
+    <!-- Quick Actions Row below hero -->
+    <div class="quick-actions">
+        <button id="add-custom-task" class="quick-btn" onclick="showCreateTaskForm()">
+            <span class="qa-icon">+</span>
+            Add Custom Task
+        </button>
+    </div>
 
-<!-- Edit Task Form (hidden by default) -->
-<div id="edit-task-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-    <h3>Edit Task</h3>
-    <form id="edit-form" method="POST">
-        <input type="hidden" id="edit-task-id" name="task_id">
-        <div class="form-group">
-            <label for="edit-task-title">Task Name:</label>
-            <input type="text" id="edit-task-title" name="title" required>
-        </div>
-        <div class="form-group">
-            <label for="edit-task-description">Description:</label>
-            <textarea id="edit-task-description" name="description" rows="3"></textarea>
-        </div>
-        <div class="form-group">
-            <label for="edit-task-frequency">Frequency (days):</label>
-            <input type="number" id="edit-task-frequency" name="frequency_days" min="1" required>
-            <small>How often should this task repeat? (e.g., 30 for monthly, 365 for yearly)</small>
-        </div>
-        <button type="submit" style="background-color: #007bff;">Update Task</button>
-        <button type="button" onclick="hideEditTaskForm()" style="background-color: #6c757d;">Cancel</button>
-        <button type="button" onclick="deleteTask()" style="background-color: #dc3545;">Delete Task</button>
-    </form>
-</div>
+    <!-- Create Task Form (hidden by default) -->
+    <div id="create-task-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h3>Create New Task</h3>
+        <form action="{{ url_for('create_task') }}" method="POST">
+            <div class="form-group">
+                <label for="task-title">Task Name:</label>
+                <input type="text" id="task-title" name="title" required>
+            </div>
+            <div class="form-group">
+                <label for="task-description">Description:</label>
+                <textarea id="task-description" name="description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="task-frequency">Frequency (days):</label>
+                <input type="number" id="task-frequency" name="frequency_days" min="1" required>
+                <small>How often should this task repeat? (e.g., 30 for monthly, 365 for yearly)</small>
+            </div>
+            <button type="submit" style="background-color: #28a745;">Create Task</button>
+            <button type="button" onclick="hideCreateTaskForm()" style="background-color: #6c757d;">Cancel</button>
+        </form>
+    </div>
 
-{% if overdue_tasks %}
-<h2 style="color: #dc3545;">⚠️ Overdue Tasks</h2>
-{% for task in overdue_tasks %}
-<div class="task overdue">
-    <h3>{{ task.title }}</h3>
-    <p>{{ task.description }}</p>
-    <p><strong>Due:</strong> {{ task.next_due_date }}</p>
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <a href="{{ url_for('complete_task', task_id=task.id) }}">
-            <button>Complete</button>
-        </a>
-        <button onclick="editTask('{{ task.id }}')" style="background-color: #007bff;">Edit</button>
+    <div class="top-panels">
+        <!-- Overview Tiles -->
+        <section id="overview" class="overview" aria-label="Home health overview">
+            <div class="panel-card">
+                <h3 class="panel-title">Home Health Overview</h3>
+                <div id="overview-tiles" class="overview-tiles">
+                    <div class="tile overdue">
+                        <div class="count">{{ overview.overdue_count if overview else (overdue_tasks|length) }}</div>
+                        <div class="label">Overdue Tasks</div>
+                    </div>
+                    <div class="tile week">
+                        <div class="count">{{ overview.due_7_days if overview else 0 }}</div>
+                        <div class="label">Due This Week</div>
+                    </div>
+                    <div class="tile completed">
+                        <div class="count">{{ overview.completed_7_days if overview else 0 }}</div>
+                        <div class="label">Completed This Month</div>
+                    </div>
+                    <div class="tile upcoming">
+                        <div class="count">{{ upcoming_tasks|length }}</div>
+                        <div class="label">Upcoming Tasks</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Urgent Attention -->
+        <section id="urgent" class="urgent" aria-label="Urgent attention">
+            <div class="panel-card">
+                <h3 class="panel-title">Urgent Attention</h3>
+                <div id="urgent-card">
+                    {% if urgent_task %}
+                        {% set due_date = urgent_task.next_due_date if urgent_task.next_due_date is defined else urgent_task['next_due_date'] %}
+                        <div class="task-card urgent">
+                            <div class="card-header urgent">
+                                <div class="title">{{ urgent_task.title }}</div>
+                                {% if urgent_task.description %}
+                                <div class="desc">{{ urgent_task.description }}</div>
+                                {% endif %}
+                                <div class="corner-dot"></div>
+                            </div>
+                            <div class="card-body">
+                                <div class="info">
+                                    <div class="info-item"><span class="label">Due date</span><span class="value">{{ (due_date or '-')|due_label }}</span></div>
+                                    <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ urgent_task.priority|lower if urgent_task.priority }}">{{ urgent_task.priority or '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ urgent_task.frequency_days ~ ' days' if urgent_task.frequency_days else '-' }}</span></span></div>
+                                </div>
+                                <div class="actions">
+                                    <a class="btn primary" href="{{ url_for('complete_task', task_id=urgent_task.id) }}">Complete</a>
+                                    <a class="btn ghost edit-btn"
+                                       href="#"
+                                       data-task-id="{{ urgent_task.id }}"
+                                       data-title="{{ urgent_task.title }}"
+                                       data-description="{{ urgent_task.description or '' }}"
+                                       data-frequency="{{ urgent_task.frequency_days or '' }}"
+                                       data-priority="{{ urgent_task.priority or '' }}"
+                                       data-category="{{ urgent_task.category or '' }}"
+                                       data-due-date="{{ due_date or '' }}">Edit</a>
+                                    <a class="btn ghost history-btn" href="#" data-task-id="{{ urgent_task.id }}">History</a>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <p>All caught up! 🎉</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Simple search only (hero). Keep hidden input for JS query param build. -->
+    <input type="hidden" id="filter-search" value="">
+    
+    <div id="tasks-container">
+        {% set overdue_count = overdue_tasks|length %}
+        {% if overdue_count > 1 %}
+        <div class="task-section">
+            <div class="panel-card">
+                <h3 class="panel-title">Overdue Tasks</h3>
+                <div id="overdue-tasks">
+                    {% if overdue_tasks %}
+                        <div class="task-card-list">
+                        {% for task in overdue_tasks %}
+                        <div class="task-card overdue">
+                            <div class="card-header">
+                                <div class="title">{{ task.title }}</div>
+                                {% if task.description %}
+                                <div class="desc">{{ task.description }}</div>
+                                {% endif %}
+                                <div class="corner-dot"></div>
+                            </div>
+                            <div class="card-body">
+                                <div class="info">
+                                    <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
+                                    <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                </div>
+                                <div class="actions">
+                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">Complete</a>
+                                    <a class="edit-btn ghost" href="#"
+                                       data-task-id="{{ task.id }}"
+                                       data-title="{{ task.title }}"
+                                       data-description="{{ task.description or '' }}"
+                                       data-frequency="{{ task.frequency_days or '' }}"
+                                       data-priority="{{ task.priority or '' }}"
+                                       data-category="{{ task.category or '' }}"
+                                       data-due-date="{{ task.next_due_date or '' }}">Edit</a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p>No overdue tasks 🎉</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="task-section span-all">
+            <div class="panel-card">
+                <h3 class="panel-title">Upcoming Tasks (Next 30 Days)</h3>
+                <div id="upcoming-tasks">
+                    {% if upcoming_tasks %}
+                        <div class="task-card-list">
+                        {% for task in upcoming_tasks %}
+                        <div class="task-card upcoming">
+                            <div class="card-header">
+                                <div class="title">{{ task.title }}</div>
+                                {% if task.description %}
+                                <div class="desc">{{ task.description }}</div>
+                                {% endif %}
+                                <div class="corner-dot"></div>
+                            </div>
+                            <div class="card-body">
+                                <div class="info">
+                                    <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
+                                    <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                </div>
+                                <div class="actions">
+                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">Complete</a>
+                                    <a class="edit-btn ghost" href="#"
+                                       data-task-id="{{ task.id }}"
+                                       data-title="{{ task.title }}"
+                                       data-description="{{ task.description or '' }}"
+                                       data-frequency="{{ task.frequency_days or '' }}"
+                                       data-priority="{{ task.priority or '' }}"
+                                       data-category="{{ task.category or '' }}"
+                                       data-due-date="{{ task.next_due_date or '' }}">Edit</a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p>No upcoming tasks in the next 30 days.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="task-section">
+            <div class="panel-card">
+                <h3 class="panel-title">Future Tasks</h3>
+                <div id="future-tasks">
+                    {% if future_tasks %}
+                        <div class="task-card-list">
+                        {% for task in future_tasks %}
+                        <div class="task-card future">
+                            <div class="card-header">
+                                <div class="title">{{ task.title }}</div>
+                                {% if task.description %}
+                                <div class="desc">{{ task.description }}</div>
+                                {% endif %}
+                                <div class="corner-dot"></div>
+                            </div>
+                            <div class="card-body">
+                                <div class="info">
+                                    <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
+                                    <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                </div>
+                                <div class="actions">
+                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">Complete</a>
+                                    <a class="edit-btn ghost" href="#"
+                                       data-task-id="{{ task.id }}"
+                                       data-title="{{ task.title }}"
+                                       data-description="{{ task.description or '' }}"
+                                       data-frequency="{{ task.frequency_days or '' }}"
+                                       data-priority="{{ task.priority or '' }}"
+                                       data-category="{{ task.category or '' }}"
+                                       data-due-date="{{ task.next_due_date or '' }}">Edit</a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p>No future tasks yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="task-section">
+            <div class="panel-card">
+                <h3 class="panel-title">Recently Completed</h3>
+                <div id="completed-tasks">
+                    {% if completed_tasks %}
+                        <div class="task-card-list">
+                        {% for task in completed_tasks %}
+                        <div class="task-card completed">
+                            <div class="card-header">
+                                <div class="title">{{ task.title }}</div>
+                                {% if task.description %}
+                                <div class="desc">{{ task.description }}</div>
+                                {% endif %}
+                                <div class="corner-dot"></div>
+                            </div>
+                            <div class="card-body">
+                                <div class="info">
+                                    <div class="info-item"><span class="label">Completed</span><span class="value">{{ task.last_completed or '-' }}</span></div>
+                                    <div class="info-item"><span class="label">Next due</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                </div>
+                                <div class="actions">
+                                    <a class="reset-btn" href="{{ url_for('reset_task', task_id=task.id) }}">Reset</a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p>No recently completed tasks.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
 </div>
-{% endfor %}
-{% endif %}
-
-{% if upcoming_tasks %}
-<h2 style="color: #ffc107;">📅 Upcoming Tasks (Next 30 Days)</h2>
-{% for task in upcoming_tasks %}
-<div class="task upcoming">
-    <h3>{{ task.title }}</h3>
-    <p>{{ task.description }}</p>
-    <p><strong>Due:</strong> {{ task.next_due_date }}</p>
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <a href="{{ url_for('complete_task', task_id=task.id) }}">
-            <button>Complete</button>
-        </a>
-        <button onclick="editTask('{{ task.id }}')" style="background-color: #007bff;">Edit</button>
-    </div>
-</div>
-{% endfor %}
-{% endif %}
-
-{% if future_tasks %}
-<h2 style="color: #6c757d;">📋 Future Tasks</h2>
-{% for task in future_tasks %}
-<div class="task future">
-    <h3>{{ task.title }}</h3>
-    <p>{{ task.description }}</p>
-    <p><strong>Due:</strong> {{ task.next_due_date }}</p>
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <a href="{{ url_for('complete_task', task_id=task.id) }}">
-            <button>Complete</button>
-        </a>
-        <button onclick="editTask('{{ task.id }}')" style="background-color: #007bff;">Edit</button>
-    </div>
-</div>
-{% endfor %}
-{% endif %}
-
-{% if not overdue_tasks and not upcoming_tasks and not future_tasks %}
-<p>No tasks found! <a href="{{ url_for('questionnaire') }}">Update your home features</a> to generate tasks.</p>
-{% endif %}
-
-{% if completed_tasks %}
-<h2 style="color: #28a745;">✅ Recently Completed Tasks</h2>
-{% for task in completed_tasks %}
-<div class="task completed">
-    <h3>{{ task.title }}</h3>
-    <p>{{ task.description }}</p>
-    <p><strong>Completed:</strong> {{ task.last_completed }}</p>
-    <p><strong>Next Due:</strong> {{ task.next_due_date }}</p>
-    <a href="{{ url_for('reset_task', task_id=task.id) }}">
-        <button style="background-color: #6c757d;">Undo Complete</button>
-    </a>
-</div>
-{% endfor %}
-{% endif %}
 
 <script>
 function showCreateTaskForm() {
@@ -132,50 +313,162 @@ function hideCreateTaskForm() {
     document.getElementById('create-task-form').style.display = 'none';
     document.getElementById('create-task-form').querySelector('form').reset();
 }
+</script>
+{% endblock %}
 
-function showEditTaskForm() {
-    document.getElementById('edit-task-form').style.display = 'block';
-}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+<!-- Modals copied from SPA (simplified for MPA) -->
+<div id="history-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Task History</h3>
+            <button id="close-history" type="button">Close</button>
+        </div>
+        <div id="history-body" class="modal-body"></div>
+    </div>
+    <div class="modal-backdrop"></div>
+    </div>
 
-function hideEditTaskForm() {
-    document.getElementById('edit-task-form').style.display = 'none';
-    document.getElementById('edit-form').reset();
-}
+<div id="edit-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Edit Task</h3>
+            <button id="edit-cancel" type="button">Close</button>
+        </div>
+        <div class="modal-body">
+            <form id="edit-form">
+                <div class="form-row">
+                    <label for="edit-title">Title</label>
+                    <input type="text" id="edit-title" required />
+                    <div class="error-text" id="edit-title-error"></div>
+                </div>
+                <div class="form-row">
+                    <label for="edit-description">Description</label>
+                    <textarea id="edit-description" rows="3"></textarea>
+                </div>
+                <div class="form-row">
+                    <label for="edit-frequency">Frequency (days)</label>
+                    <input type="number" id="edit-frequency" min="1" required />
+                    <div class="error-text" id="edit-frequency-error"></div>
+                </div>
+                <div class="form-row">
+                    <label for="edit-due-date">Due date</label>
+                    <input type="date" id="edit-due-date" />
+                </div>
+                <div class="form-row">
+                    <label for="edit-priority">Priority</label>
+                    <select id="edit-priority">
+                        <option value="">None</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label for="edit-category">Category</label>
+                    <input type="text" id="edit-category" />
+                </div>
+            </form>
+        </div>
+        <div class="modal-actions">
+            <button id="edit-save" type="button">Save</button>
+        </div>
+    </div>
+    <div class="modal-backdrop"></div>
+</div>
 
-async function editTask(taskId) {
+<script>
+// Lightweight MPA modal wiring for Edit and History
+(function(){
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+  const historyModal = $('#history-modal');
+  const historyBody = $('#history-body');
+  const editModal = $('#edit-modal');
+  const editForm = $('#edit-form');
+  const editSave = $('#edit-save');
+
+  let currentEditTaskId = null;
+
+  function open(el){ if(el){ el.style.display='flex'; document.body.style.overflow='hidden'; } }
+  function close(el){ if(el){ el.style.display='none'; document.body.style.overflow=''; } }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('a,button');
+    if(!btn) return;
+
+    if(btn.classList.contains('history-btn')){
+      e.preventDefault();
+      const taskId = btn.getAttribute('data-task-id');
+      historyBody.innerHTML = '<p>Loading history…</p>';
+      open(historyModal);
+      fetch(`/tasks/${taskId}/history`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }})
+        .then(r => r.ok ? r.text() : Promise.reject(new Error('Failed to load')))
+        .then(html => { historyBody.innerHTML = html; })
+        .catch(() => { historyBody.innerHTML = '<p>Unable to load history right now.</p>'; });
+    }
+
+    if(btn.classList.contains('edit-btn')){
+      e.preventDefault();
+      currentEditTaskId = btn.getAttribute('data-task-id');
+      // Populate fields
+      $('#edit-title').value = btn.getAttribute('data-title') || '';
+      $('#edit-description').value = btn.getAttribute('data-description') || '';
+      $('#edit-frequency').value = btn.getAttribute('data-frequency') || '';
+      // Normalize priority to lowercase values expected in select
+      const pri = (btn.getAttribute('data-priority') || '').toLowerCase();
+      $('#edit-priority').value = ['low','medium','high'].includes(pri) ? pri : '';
+      $('#edit-category').value = btn.getAttribute('data-category') || '';
+      // Due date should be yyyy-mm-dd for date input
+      const rawDue = btn.getAttribute('data-due-date') || '';
+      const due = rawDue ? rawDue.slice(0,10) : '';
+      $('#edit-due-date').value = due;
+      // Simple debug hook (visible in console)
+      try { console.debug('Edit populate', { id: currentEditTaskId, pri, due, freq: $('#edit-frequency').value }); } catch(_) {}
+      open(editModal);
+    }
+  });
+
+  $('#close-history')?.addEventListener('click', () => close(historyModal));
+  $('#edit-cancel')?.addEventListener('click', () => close(editModal));
+
+  editSave?.addEventListener('click', async () => {
+    if(!currentEditTaskId) return;
+    const fd = new FormData();
+    fd.set('title', $('#edit-title').value.trim());
+    fd.set('description', $('#edit-description').value.trim());
+    fd.set('frequency_days', $('#edit-frequency').value);
+    // Always include due/priority, even if blank (blank clears priority server-side)
+    fd.set('next_due_date', $('#edit-due-date').value);
+    fd.set('priority', ($('#edit-priority').value || '').toLowerCase());
+    fd.set('category', $('#edit-category').value.trim());
+    // For visibility during troubleshooting
+    try { console.debug('Edit submit', Object.fromEntries(fd.entries())); } catch(_) {}
     try {
-        const response = await fetch(`/get_task/${taskId}`);
-        const data = await response.json();
-        
-        if (data.task) {
-            document.getElementById('edit-task-id').value = data.task.id;
-            document.getElementById('edit-task-title').value = data.task.title;
-            document.getElementById('edit-task-description').value = data.task.description;
-            document.getElementById('edit-task-frequency').value = data.task.frequency_days;
-            document.getElementById('edit-form').action = `/edit_task/${taskId}`;
-            showEditTaskForm();
-        } else {
-            alert('Error loading task details');
-        }
-    } catch (error) {
-        alert('Error loading task details');
+      const res = await fetch(`${window.location.origin}/edit_task/${currentEditTaskId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        body: fd
+      });
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch(_) {}
+      console.debug('Edit response raw', { status: res.status, text });
+      if(!res.ok || (data && data.ok === false)){
+        console.error('Edit save failed', data || text);
+        throw new Error((data && data.error) || `Failed to save (${res.status})`);
+      }
+      console.debug('Edit save success', data);
+      // Refresh to reflect changes
+      window.location.reload();
+    } catch(err){
+      const errEl = $('#edit-title-error');
+      if(errEl){ errEl.textContent = 'Save failed. Please try again.'; }
     }
-}
-
-async function deleteTask() {
-    const taskId = document.getElementById('edit-task-id').value;
-    if (confirm('Are you sure you want to delete this task?')) {
-        try {
-            const response = await fetch(`/delete_task/${taskId}`, { method: 'POST' });
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('Error deleting task');
-            }
-        } catch (error) {
-            alert('Error deleting task');
-        }
-    }
-}
+  });
+})();
 </script>
 {% endblock %}

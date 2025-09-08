@@ -3,115 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
     <title>Home Maintenance Tracker</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1, h2 { color: #333; }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input, textarea {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover { background-color: #0056b3; }
-        .flash-messages {
-            margin-bottom: 20px;
-        }
-        .flash-message {
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 4px;
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .nav {
-            text-align: right;
-            margin-bottom: 20px;
-        }
-        .nav a {
-            margin-left: 15px;
-            color: #007bff;
-            text-decoration: none;
-        }
-        .task {
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 5px;
-            background: #f8f9fa;
-        }
-        .task.overdue {
-            border-left: 4px solid #dc3545;
-            background: #fff5f5;
-        }
-        .task.upcoming {
-            border-left: 4px solid #ffc107;
-        }
-        .task.future {
-            border-left: 4px solid #6c757d;
-            background: #f8f9fa;
-        }
-        .task.completed {
-            border-left: 4px solid #6c757d;
-            opacity: 0.7;
-        }
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-            margin: 15px 0;
-        }
-        .checkbox-item {
-            display: flex;
-            align-items: center;
-        }
-        .checkbox-item input {
-            width: auto;
-            margin-right: 8px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
 </head>
 <body>
     <div class="container">
-        {% if session.user_id %}
-        <div class="nav">
-            Welcome, {{ session.username }}! | 
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('questionnaire') }}">Update Home Features</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
-        </div>
-        {% endif %}
+        {% block header %}
+            {% if session.user_id %}
+            <div class="nav">
+                Welcome, {{ session.username }}! | 
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('questionnaire') }}">Update Home Features</a>
+                <a href="{{ url_for('logout') }}">Logout</a>
+            </div>
+            {% endif %}
+        {% endblock %}
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
@@ -123,7 +30,11 @@
             {% endif %}
         {% endwith %}
 
+        <!-- JS-driven flash messages container -->
+        <div id="flash-messages"></div>
+
         {% block content %}{% endblock %}
     </div>
+    {% block scripts %}{% endblock %}
 </body>
 </html>
