@@ -5,27 +5,7 @@
 <div id="dashboard-section">
                 
 
-    <!-- Hero Header -->
-    <section class="hero">
-        <div class="hero-text">
-            <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">{{ session.username or 'Friend' }}</span></h1>
-            <p class="sub">Helping you take care of your home, one step at a time</p>
-        </div>
-        <div class="hero-actions">
-            <form class="hero-search" id="hero-search-form" role="search" onsubmit="return false;">
-                <input id="hero-search" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" />
-            </form>
-            <div class="user-menu-wrap">
-                <button id="user-menu-toggle" class="avatar-btn" aria-haspopup="menu" aria-expanded="false" title="Account">
-                    <span id="avatar-initial">{{ (session.username[0]|upper) if session.username else 'U' }}</span>
-                </button>
-                <div id="user-menu" class="user-menu" role="menu">
-                    <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('questionnaire') }}">Update Home Features</a>
-                    <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('logout') }}">Logout</a>
-                </div>
-            </div>
-        </div>
-    </section>
+    
 
     <!-- Quick Actions Row below hero -->
     <div class="quick-actions">
@@ -33,6 +13,14 @@
             <span class="qa-icon">+</span>
             Add Custom Task
         </button>
+        <a id="calendar-view" class="quick-btn" href="{{ url_for('calendar_view') }}">
+            <svg class="qa-icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+            Calendar View
+        </a>
+        <a id="home-details" class="quick-btn" href="{{ url_for('questionnaire') }}">
+            <svg class="qa-icon" aria-hidden="true"><use href="#icon-house"></use></svg>
+            Home Details
+        </a>
     </div>
 
     <!-- Create Task Form (hidden by default) -->
@@ -92,7 +80,15 @@
                         {% set due_date = urgent_task.next_due_date if urgent_task.next_due_date is defined else urgent_task['next_due_date'] %}
                         <div class="task-card urgent">
                             <div class="card-header urgent">
-                                <div class="title">{{ urgent_task.title }}</div>
+                                <div class="title">
+                                {%- set seasonal = urgent_task.seasonal if urgent_task.seasonal is defined else urgent_task['seasonal'] -%}
+                                {%- set sc = (urgent_task.season_code if urgent_task.season_code is defined else urgent_task['season_code'])|default('', true)|lower -%}
+                                {%- if seasonal and sc -%}
+                                  {%- set icon_id = 'icon-' + (sc if sc != 'autumn' else 'fall') -%}
+                                  <svg class="season-icon" aria-hidden="true"><use href="#{{ icon_id }}"></use></svg>
+                                {%- endif -%}
+                                {{ urgent_task.title }}
+                            </div>
                                 {% if urgent_task.description %}
                                 <div class="desc">{{ urgent_task.description }}</div>
                                 {% endif %}
@@ -105,7 +101,10 @@
                                     <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ urgent_task.frequency_days ~ ' days' if urgent_task.frequency_days else '-' }}</span></span></div>
                                 </div>
                                 <div class="actions">
-                                    <a class="btn primary" href="{{ url_for('complete_task', task_id=urgent_task.id) }}">Complete</a>
+                                    <a class="btn primary" href="{{ url_for('complete_task', task_id=urgent_task.id) }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                                        Complete
+                                    </a>
                                     <a class="btn ghost edit-btn"
                                        href="#"
                                        data-task-id="{{ urgent_task.id }}"
@@ -114,13 +113,19 @@
                                        data-frequency="{{ urgent_task.frequency_days or '' }}"
                                        data-priority="{{ urgent_task.priority or '' }}"
                                        data-category="{{ urgent_task.category or '' }}"
-                                       data-due-date="{{ due_date or '' }}">Edit</a>
-                                    <a class="btn ghost history-btn" href="#" data-task-id="{{ urgent_task.id }}">History</a>
+                                       data-due-date="{{ due_date or '' }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+                                        Edit
+                                    </a>
+                                    <a class="btn ghost history-btn" href="#" data-task-id="{{ urgent_task.id }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                                        History
+                                    </a>
                                 </div>
                             </div>
                         </div>
                     {% else %}
-                        <p>All caught up! 🎉</p>
+                        <p>You're in great shape. Review your upcoming tasks below.</p>
                     {% endif %}
                 </div>
             </div>
@@ -142,7 +147,15 @@
                         {% for task in overdue_tasks %}
                         <div class="task-card overdue">
                             <div class="card-header">
-                                <div class="title">{{ task.title }}</div>
+                                <div class="title">
+                                    {%- set seasonal = task.seasonal if task.seasonal is defined else task['seasonal'] -%}
+                                    {%- set sc = (task.season_code if task.season_code is defined else task['season_code'])|default('', true)|lower -%}
+                                    {%- if seasonal and sc -%}
+                                      {%- set icon_id = 'icon-' + (sc if sc != 'autumn' else 'fall') -%}
+                                      <svg class="season-icon" aria-hidden="true"><use href="#{{ icon_id }}"></use></svg>
+                                    {%- endif -%}
+                                    {{ task.title }}
+                                </div>
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
@@ -155,7 +168,10 @@
                                     <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
                                 </div>
                                 <div class="actions">
-                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">Complete</a>
+                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                                        Complete
+                                    </a>
                                     <a class="edit-btn ghost" href="#"
                                        data-task-id="{{ task.id }}"
                                        data-title="{{ task.title }}"
@@ -163,8 +179,14 @@
                                        data-frequency="{{ task.frequency_days or '' }}"
                                        data-priority="{{ task.priority or '' }}"
                                        data-category="{{ task.category or '' }}"
-                                       data-due-date="{{ task.next_due_date or '' }}">Edit</a>
-                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                       data-due-date="{{ task.next_due_date or '' }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+                                        Edit
+                                    </a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                                        History
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -187,7 +209,15 @@
                         {% for task in upcoming_tasks %}
                         <div class="task-card upcoming">
                             <div class="card-header">
-                                <div class="title">{{ task.title }}</div>
+                                <div class="title">
+                                    {%- set seasonal = task.seasonal if task.seasonal is defined else task['seasonal'] -%}
+                                    {%- set sc = (task.season_code if task.season_code is defined else task['season_code'])|default('', true)|lower -%}
+                                    {%- if seasonal and sc -%}
+                                      {%- set icon_id = 'icon-' + (sc if sc != 'autumn' else 'fall') -%}
+                                      <svg class="season-icon" aria-hidden="true"><use href="#{{ icon_id }}"></use></svg>
+                                    {%- endif -%}
+                                    {{ task.title }}
+                                </div>
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
@@ -200,7 +230,10 @@
                                     <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
                                 </div>
                                 <div class="actions">
-                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">Complete</a>
+                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                                        Complete
+                                    </a>
                                     <a class="edit-btn ghost" href="#"
                                        data-task-id="{{ task.id }}"
                                        data-title="{{ task.title }}"
@@ -208,8 +241,14 @@
                                        data-frequency="{{ task.frequency_days or '' }}"
                                        data-priority="{{ task.priority or '' }}"
                                        data-category="{{ task.category or '' }}"
-                                       data-due-date="{{ task.next_due_date or '' }}">Edit</a>
-                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                       data-due-date="{{ task.next_due_date or '' }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+                                        Edit
+                                    </a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                                        History
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -231,7 +270,15 @@
                         {% for task in future_tasks %}
                         <div class="task-card future">
                             <div class="card-header">
-                                <div class="title">{{ task.title }}</div>
+                                <div class="title">
+                                    {%- set seasonal = task.seasonal if task.seasonal is defined else task['seasonal'] -%}
+                                    {%- set sc = (task.season_code if task.season_code is defined else task['season_code'])|default('', true)|lower -%}
+                                    {%- if seasonal and sc -%}
+                                      {%- set icon_id = 'icon-' + (sc if sc != 'autumn' else 'fall') -%}
+                                      <svg class="season-icon" aria-hidden="true"><use href="#{{ icon_id }}"></use></svg>
+                                    {%- endif -%}
+                                    {{ task.title }}
+                                </div>
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
@@ -244,7 +291,10 @@
                                     <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
                                 </div>
                                 <div class="actions">
-                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">Complete</a>
+                                    <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                                        Complete
+                                    </a>
                                     <a class="edit-btn ghost" href="#"
                                        data-task-id="{{ task.id }}"
                                        data-title="{{ task.title }}"
@@ -252,8 +302,14 @@
                                        data-frequency="{{ task.frequency_days or '' }}"
                                        data-priority="{{ task.priority or '' }}"
                                        data-category="{{ task.category or '' }}"
-                                       data-due-date="{{ task.next_due_date or '' }}">Edit</a>
-                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                       data-due-date="{{ task.next_due_date or '' }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+                                        Edit
+                                    </a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                                        History
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -275,7 +331,15 @@
                         {% for task in completed_tasks %}
                         <div class="task-card completed">
                             <div class="card-header">
-                                <div class="title">{{ task.title }}</div>
+                                <div class="title">
+                                    {%- set seasonal = task.seasonal if task.seasonal is defined else task['seasonal'] -%}
+                                    {%- set sc = (task.season_code if task.season_code is defined else task['season_code'])|default('', true)|lower -%}
+                                    {%- if seasonal and sc -%}
+                                      {%- set icon_id = 'icon-' + (sc if sc != 'autumn' else 'fall') -%}
+                                      <svg class="season-icon" aria-hidden="true"><use href="#{{ icon_id }}"></use></svg>
+                                    {%- endif -%}
+                                    {{ task.title }}
+                                </div>
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
@@ -289,7 +353,10 @@
                                 </div>
                                 <div class="actions">
                                     <a class="reset-btn" href="{{ url_for('reset_task', task_id=task.id) }}">Reset</a>
-                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">History</a>
+                                    <a class="history-btn ghost" href="#" data-task-id="{{ task.id }}">
+                                        <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                                        History
+                                    </a>
                                 </div>
                             </div>
                         </div>

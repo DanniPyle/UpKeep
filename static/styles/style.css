@@ -1,3 +1,5 @@
+/* Landing page tweaks */
+.overview-tiles { margin-bottom: 16px; }
 * {
     margin: 0;
     padding: 0;
@@ -43,6 +45,8 @@
   letter-spacing: -0.02em;
   color: #2b2b2b;
   margin-bottom: 4px;
+  font-family: 'Nunito', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 800;
 }
 
 .hero .sub {
@@ -194,8 +198,9 @@
   box-shadow: 0 12px 36px rgba(197,143,76,0.08);
   backdrop-filter: saturate(180%) blur(12px);
   -webkit-backdrop-filter: saturate(180%) blur(12px);
+  margin-bottom: 16px; /* give space beneath stacked cards */
 }
-.panel-title { margin: 0 0 10px; font-size: 14px; color: var(--text-sec, #6b7280); font-weight: 600; }
+.panel-title { margin: 0 0 10px; font-size: 14px; color: var(--text-sec, #6b7280); font-weight: 700; font-family: 'Nunito', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
 .overview-tiles {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -401,6 +406,7 @@
   box-shadow: 0 8px 24px rgba(0,0,0,0.06);
   font-weight: 700;
   font-size: 16px;
+  text-decoration: none;
 }
 .quick-actions .quick-btn:hover {
   background: color-mix(in srgb, var(--accent) 6%, var(--card));
@@ -610,6 +616,10 @@
   font-weight: 800;
   font-size: 20px;
   color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Nunito', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 .task-card .card-header .desc {
   margin-top: 6px;
@@ -626,6 +636,15 @@
   border-radius: 50%;
   background: rgba(255,255,255,0.8);
   box-shadow: 0 0 10px rgba(255,255,255,0.6);
+}
+
+/* Seasonal icon next to titles */
+.task-card .card-header .season-icon,
+.urgent .card .card-header .season-icon {
+  width: 18px;
+  height: 18px;
+  color: #6b7280; /* subtle neutral tone */
+  flex: 0 0 auto;
 }
 
 .task-card .card-body {
@@ -1022,6 +1041,65 @@ textarea {
   gap: 12px;
   margin-bottom: 10px;
 }
+
+/* Questionnaire Wizard (moved from inline <style> in questionnaire.html) */
+#wizard .card { background:#f8f9fa; border:1px solid #ddd; border-radius:12px; padding:26px; margin: 16px 0 22px; }
+#wizard .wizard-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+#wizard .wizard-actions { display:flex; gap:10px; }
+#wizard .progress { height:10px; background:#eee; border-radius:999px; overflow:hidden; margin:12px 0 22px; }
+#wizard .progress > .bar { height:100%; width:0%; background:#28a745; transition: width .25s ease; }
+#wizard .steps { margin-top: 10px; }
+#wizard .step { display:none; }
+#wizard .step.active { display:block; }
+#wizard .step h2 { margin-top:0; margin-bottom:6px; }
+#wizard .nav-buttons { display:flex; justify-content:space-between; gap:10px; margin-top:22px; }
+#wizard .nav-buttons .left, #wizard .nav-buttons .right { display:flex; gap:10px; }
+#wizard .muted { color:#555; }
+#wizard .radio-group, #wizard .checkbox-group { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; }
+#wizard .form-group { margin: 18px 0 22px; }
+#wizard .inline { display:flex; gap:10px; align-items:center; }
+#wizard .inline.inline-wrap { flex-wrap:wrap; gap:14px; }
+#wizard .success { text-align:center; padding:30px; }
+#wizard .success h2 { color:#28a745; }
+#wizard .hint { font-size: 13px; color:#666; }
+#wizard label { font-weight: 600; }
+#wizard .section-divider { margin: 22px 0; height: 1px; background: rgba(0,0,0,0.06); border-radius: 999px; }
+#wizard .section-sub { margin: 0 0 10px; color:#6b7280; font-weight:600; font-size:14px; }
+
+/* Wizard button look to match task cards */
+#wizard .btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  height:38px; padding:0 14px; border-radius:14px; font-weight:600; font-size:14px;
+  border:1px solid #e5e7eb; background:#ffffff; color:#1f2937;
+  box-shadow:0 6px 16px rgba(210,153,83,0.14); cursor:pointer;
+  transition: background .15s ease, transform .05s ease, box-shadow .15s ease;
+  text-decoration:none;
+}
+#wizard .btn:hover { background:#fff7ed; }
+#wizard .btn:active { transform:translateY(1px); }
+#wizard .btn-ghost { background:#ffffff; border:1px solid rgba(0,0,0,0.06); box-shadow:0 6px 16px rgba(210,153,83,0.14); color:#1f2937; }
+#wizard .btn-ghost:hover { background:#fff7ed; }
+#wizard .btn-success-soft { background:#e8f7ee; border:1px solid rgba(16,185,129,0.35); color:#0b2b12; box-shadow:none; }
+#wizard .btn-success-soft:hover { background:#dff3e7; }
+
+/* Wizard option cards */
+#wizard .option-cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; }
+#wizard .option-card { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:16px 14px; border-radius:14px; border:1px solid rgba(0,0,0,0.08); background:#ffffff; box-shadow:0 8px 22px rgba(210,153,83,0.10); cursor:pointer; transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease; text-align:center; }
+#wizard .option-card:hover { background:#fffdf8; border-color: rgba(210,153,83,0.35); }
+#wizard .option-card:active { transform: translateY(1px); }
+#wizard .option-card .icon { width: 28px; height: 28px; color:#6b7280; }
+#wizard .option-card .title { font-weight:700; color:#1f2937; }
+#wizard .option-card input[type="radio"] { position:absolute; inset:0; opacity:0; pointer-events:none; }
+#wizard .option-card input[type="checkbox"] { position:absolute; inset:0; opacity:0; pointer-events:none; }
+#wizard .option-card.selected { border-color: rgba(16,185,129,0.45); box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+
+/* Compact pill variant */
+#wizard .option-cards.buttons { display:flex; flex-wrap:wrap; gap:10px; }
+#wizard .option-cards.buttons .option-card { flex-direction: row; gap:8px; padding:10px 14px; border-radius:999px; box-shadow:0 6px 16px rgba(210,153,83,0.10); min-width: max-content; text-align:left; }
+#wizard .option-cards.buttons .option-card .icon { width:18px; height:18px; }
+
+/* Wizard inline error (was #saveError inline style) */
+#wizard .wizard-error { display:none; margin-bottom:12px; padding:10px 12px; border-radius:10px; border:1px solid rgba(220,38,38,0.25); background:#fff1f2; color:#7f1d1d; font-weight:600; }
 .home-details .hd-actions { display: flex; gap: 10px; }
 .home-details .hd-actions.footer { margin-top: 14px; justify-content: flex-end; }
 
@@ -1484,3 +1562,11 @@ html, body { background: var(--page-bg) !important; }
 @media (prefers-color-scheme: dark) {
   html, body { background: var(--page-bg) !important; }
 }
+
+.icon {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: -0.125em;
+    fill: currentColor; /* inherit text color */
+  }

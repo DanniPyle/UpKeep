@@ -19,6 +19,45 @@ BEGIN
     END IF;
 END$$;
 
+-- 5) Seasonal metadata on tasks (used for seasonal icons and scheduling)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'seasonal'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN seasonal boolean NOT NULL DEFAULT false;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'seasonal_anchor_type'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN seasonal_anchor_type text; -- 'season_start' | 'fixed_date'
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'season_code'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN season_code text; -- 'winter'|'spring'|'summer'|'autumn'
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'season_anchor_month'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN season_anchor_month integer;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'season_anchor_day'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN season_anchor_day integer;
+    END IF;
+END$$;
+
 -- 4) Extended questionnaire fields on home_features
 DO $$
 BEGIN
@@ -185,4 +224,36 @@ BEGIN
     ) THEN
         ALTER TABLE public.home_features ADD COLUMN has_garage boolean NOT NULL DEFAULT false;
     END IF;
+END$$;
+
+-- 6) Backfill existing tasks' seasonal fields from known task titles
+DO $$
+DECLARE
+    r record;
+BEGIN
+    -- Create a temporary mapping table of seasonal metadata keyed by human title
+    CREATE TEMP TABLE IF NOT EXISTS tmp_task_season_map_title (
+        title text primary key,
+        seasonal boolean,
+        seasonal_anchor_type text,
+        season_code text,
+        season_anchor_month integer,
+        season_anchor_day integer
+    ) ON COMMIT DROP;
+
+    -- Known rows from static/tasks_catalog.csv
+    INSERT INTO tmp_task_season_map_title(title, seasonal, seasonal_anchor_type, season_code, season_anchor_month, season_anchor_day) VALUES
+      ('Replace Smoke Detector Batteries', true, 'fixed_date', NULL, 11, 1),
+      ('Winterize Outdoor Faucets', true, 'season_start', 'autumn', NULL, NULL)
+    ON CONFLICT (title) DO NOTHING;
+
+    -- Backfill by joining on the exact title
+    UPDATE public.tasks t
+    SET seasonal = COALESCE(t.seasonal, m.seasonal),
+        seasonal_anchor_type = COALESCE(t.seasonal_anchor_type, m.seasonal_anchor_type),
+        season_code = COALESCE(t.season_code, m.season_code),
+        season_anchor_month = COALESCE(t.season_anchor_month, m.season_anchor_month),
+        season_anchor_day = COALESCE(t.season_anchor_day, m.season_anchor_day)
+    FROM tmp_task_season_map_title m
+    WHERE lower(t.title) = lower(m.title);
 END$$;

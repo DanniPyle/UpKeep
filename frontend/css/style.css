@@ -121,6 +121,7 @@
   background: #ecffe6; /* solid warm tone */
   color: #6b4d17;
   box-shadow: 0 4px 12px rgba(221, 168, 98, 0.18);
+  text-decoration: none;
 }
 
 .quick-btn:hover { background: #ffe9cf; }
@@ -135,6 +136,7 @@
   background: #f7d9a6;
   color: #6b4d17;
   font-weight: 700;
+  text-decoration: none;
 }
 
 /* Keep hero readable if OS requests dark */
@@ -323,6 +325,7 @@
   box-shadow: 0 8px 24px rgba(0,0,0,0.06);
   font-weight: 700;
   font-size: 16px;
+  text-align: none;
 }
 .quick-actions .quick-btn:hover {
   background: color-mix(in srgb, var(--accent) 6%, var(--card));
@@ -341,6 +344,7 @@
   color: #b45309;               /* warm icon color */
   font-weight: 800;
   line-height: 1;
+  text-decoration: none;
 }
 @media (max-width: 640px) {
   .quick-actions .quick-btn {

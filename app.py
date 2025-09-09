@@ -382,7 +382,13 @@ def _insert_tasks_for_user(user_id, rows):
             'next_due_date': next_due.isoformat(),
             'is_completed': False,
             'priority': priority,
-            'category': category
+            'category': category,
+            # Persist seasonal metadata so UI can render icons
+            'seasonal': seasonal,
+            'seasonal_anchor_type': (r.get('seasonal_anchor_type') or None),
+            'season_code': ((r.get('season_code') or '').strip().lower() or None),
+            'season_anchor_month': _parse_int(r.get('season_anchor_month'), default=None),
+            'season_anchor_day': _parse_int(r.get('season_anchor_day'), default=None),
         })
 
     if to_insert:
@@ -448,7 +454,8 @@ def reactivate_due_tasks(user_id):
 def index():
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
-
+    # Not logged in: show welcome/landing page
+    return render_template('index.html')
 
 @app.route('/tasks/<int:task_id>/history')
 def task_history(task_id):
@@ -554,6 +561,7 @@ def questionnaire():
     
     if request.method == 'POST':
         user_id = session['user_id']
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         
         # Helper to interpret checkbox/radio values uniformly
         def _is_checked(name, default=False):
@@ -621,22 +629,31 @@ def questionnaire():
         
         try:
             # Check if features already exist for this user
-            existing = supabase.table('home_features').select('id').eq('user_id', user_id).execute()
-            
-            if existing.data:
-                # Update existing features
-                supabase.table('home_features').update({
-                    **features,
-                    **extended,
-                    'user_id': user_id
-                }).eq('user_id', user_id).execute()
+            existing_full = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
+
+            # Build a combined dict of inputs
+            combined_input = {**features, **extended}
+
+            if existing_full.data:
+                # Filter to only columns that exist on this row to avoid schema errors (e.g., no 'carpet' col)
+                row = existing_full.data[0]
+                allowed_keys = set(row.keys())
+                safe_payload = {k: v for k, v in combined_input.items() if k in allowed_keys}
+                # Always keep user_id filter/update
+                safe_payload['user_id'] = user_id
+
+                supabase.table('home_features').update(safe_payload).eq('user_id', user_id).execute()
             else:
-                # Insert new features
-                supabase.table('home_features').insert({
-                    'user_id': user_id,
-                    **features,
-                    **extended
-                }).execute()
+                # Safe allowed columns for insert: all boolean feature flags + known text/date columns
+                SAFE_TEXT_COLS = {
+                    'home_type', 'year_built', 'home_size', 'fireplace_type', 'garage_type',
+                    'season_spring', 'season_summer', 'season_autumn', 'season_winter'
+                }
+                insert_allowed = set(ALLOWED_FEATURE_KEYS) | SAFE_TEXT_COLS
+                safe_payload = {k: v for k, v in combined_input.items() if k in insert_allowed}
+                safe_payload['user_id'] = user_id
+
+                supabase.table('home_features').insert(safe_payload).execute()
             
             # Generate tasks based on features (include extended boolean flags)
             combined_features = dict(features)
@@ -648,10 +665,14 @@ def questionnaire():
                     combined_features[k] = v
             generate_tasks_for_user(user_id, combined_features)
             
+            if is_ajax:
+                return jsonify({'ok': True, 'redirect': url_for('dashboard')}), 200
             flash('Home features saved and tasks generated!')
             return redirect(url_for('dashboard'))
             
         except Exception as e:
+            if is_ajax:
+                return jsonify({'ok': False, 'error': str(e)}), 400
             flash(f'Error saving features: {str(e)}')
     
     # GET: prefill
@@ -692,6 +713,17 @@ def dashboard():
         # Get recently completed tasks
         completed_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', True).order('last_completed', desc=True).limit(10).execute()
         completed_tasks = completed_result.data or []
+
+        # Optional search filter from querystring
+        q = (request.args.get('q') or '').strip()
+        if q:
+            q_lower = q.lower()
+            def _match(t):
+                title = (t.get('title') or '').lower()
+                desc = (t.get('description') or '').lower()
+                return (q_lower in title) or (q_lower in desc)
+            tasks = [t for t in tasks if _match(t)]
+            completed_tasks = [t for t in completed_tasks if _match(t)]
         
         # Categorize tasks
         overdue = []
@@ -729,17 +761,15 @@ def dashboard():
             'completed_7_days': completed_last_7,
         }
 
-        # Urgent task: most overdue, else next due soonest
+        # Urgent task: show only when there are overdue tasks
         urgent_task = None
         urgent_task_overdue = False
         try:
             if overdue:
                 urgent_task = sorted(overdue, key=lambda t: datetime.fromisoformat(t['next_due_date']))[0]
                 urgent_task_overdue = True
-            elif upcoming:
-                urgent_task = sorted(upcoming, key=lambda t: datetime.fromisoformat(t['next_due_date']))[0]
         except Exception:
-            urgent_task = overdue[0] if overdue else (upcoming[0] if upcoming else None)
+            urgent_task = overdue[0] if overdue else None
             urgent_task_overdue = bool(overdue)
 
         return render_template('dashboard.html', 
@@ -758,6 +788,92 @@ def dashboard():
                              upcoming_tasks=[],
                              future_tasks=[],
                              completed_tasks=[])
+
+@app.route('/calendar')
+def calendar_view():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    # Determine target month
+    try:
+        year = int(request.args.get('year') or datetime.now().year)
+        month = int(request.args.get('month') or datetime.now().month)
+        first_of_month = datetime(year, month, 1).date()
+    except Exception:
+        first_of_month = datetime.now().date().replace(day=1)
+        year = first_of_month.year
+        month = first_of_month.month
+
+    # Compute start (Sunday) to end (Saturday) range covering the month grid
+    start_weekday = first_of_month.weekday()  # Monday=0..Sunday=6
+    # We want Sunday as first column: compute days back to Sunday
+    days_back_to_sunday = (start_weekday + 1) % 7
+    grid_start = first_of_month - timedelta(days=days_back_to_sunday)
+    # End of month
+    if month == 12:
+        first_next_month = datetime(year + 1, 1, 1).date()
+    else:
+        first_next_month = datetime(year, month + 1, 1).date()
+    last_of_month = first_next_month - timedelta(days=1)
+    end_weekday = last_of_month.weekday()
+    days_forward_to_saturday = (6 - end_weekday)
+    grid_end = last_of_month + timedelta(days=days_forward_to_saturday)
+
+    # Fetch active tasks due within grid window
+    try:
+        tasks_result = (supabase
+                        .table('tasks')
+                        .select('*')
+                        .eq('user_id', user_id)
+                        .eq('is_completed', False)
+                        .gte('next_due_date', grid_start.isoformat())
+                        .lte('next_due_date', grid_end.isoformat())
+                        .order('next_due_date')
+                        .execute())
+        tasks = tasks_result.data or []
+    except Exception:
+        tasks = []
+
+    # Group tasks by next_due_date
+    by_date = {}
+    for t in tasks:
+        try:
+            d = datetime.fromisoformat(t['next_due_date']).date()
+            by_date.setdefault(d.isoformat(), []).append(t)
+        except Exception:
+            continue
+
+    # Build days list for grid
+    days = []
+    cur = grid_start
+    today = datetime.now().date()
+    while cur <= grid_end:
+        days.append({
+            'date': cur,
+            'in_month': (cur.month == month),
+            'items': by_date.get(cur.isoformat(), []),
+            'is_today': (cur == today),
+            'is_past': (cur < today),
+        })
+        cur += timedelta(days=1)
+
+    # Prev/next month params
+    prev_year = year if month > 1 else year - 1
+    prev_month = month - 1 if month > 1 else 12
+    next_year = year if month < 12 else year + 1
+    next_month = month + 1 if month < 12 else 1
+
+    return render_template('calendar.html',
+                           year=year,
+                           month=month,
+                           days=days,
+                           prev_year=prev_year,
+                           prev_month=prev_month,
+                           next_year=next_year,
+                           next_month=next_month,
+                           today_year=today.year,
+                           today_month=today.month)
 
 @app.route('/complete_task/<int:task_id>')
 def complete_task(task_id):

@@ -2,43 +2,7 @@
 
 {% block content %}
 <section class="home-details" id="wizard">
-  <style>
-    /* Scoped to questionnaire wizard to avoid global impact */
-    #wizard .card { background:#f8f9fa; border:1px solid #ddd; border-radius:8px; padding:20px; margin: 10px 0; }
-    #wizard .wizard-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-    #wizard .wizard-actions { display:flex; gap:10px; }
-    #wizard .progress { height:10px; background:#eee; border-radius:6px; overflow:hidden; margin:10px 0 18px; }
-    #wizard .progress > .bar { height:100%; width:0%; background:#28a745; transition: width .25s ease; }
-    #wizard .steps { margin-top: 8px; }
-    #wizard .step { display:none; }
-    #wizard .step.active { display:block; }
-    #wizard .step h2 { margin-top:0; }
-    #wizard .nav-buttons { display:flex; justify-content:space-between; gap:10px; margin-top:16px; }
-    #wizard .nav-buttons .left, #wizard .nav-buttons .right { display:flex; gap:10px; }
-    #wizard .muted { color:#555; }
-    #wizard .radio-group, #wizard .checkbox-group { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
-    #wizard .inline { display:flex; gap:10px; align-items:center; }
-    #wizard .success { text-align:center; padding:30px; }
-    #wizard .success h2 { color:#28a745; }
-    #wizard .hint { font-size: 13px; color:#666; }
-    #wizard label { font-weight: 600; }
-
-    /* Button styles to match task-card global look */
-    #wizard .btn {
-      display:inline-flex; align-items:center; justify-content:center;
-      height:38px; padding:0 14px; border-radius:14px; font-weight:600; font-size:14px;
-      border:1px solid #e5e7eb; background:#ffffff; color:#1f2937;
-      box-shadow:0 6px 16px rgba(210,153,83,0.14); cursor:pointer;
-      transition: background .15s ease, transform .05s ease, box-shadow .15s ease;
-      text-decoration:none;
-    }
-    #wizard .btn:hover { background:#fff7ed; }
-    #wizard .btn:active { transform:translateY(1px); }
-    #wizard .btn-ghost { background:#ffffff; border:1px solid rgba(0,0,0,0.06); box-shadow:0 6px 16px rgba(210,153,83,0.14); color:#1f2937; }
-    #wizard .btn-ghost:hover { background:#fff7ed; }
-    #wizard .btn-success-soft { background:#e8f7ee; border:1px solid rgba(16,185,129,0.35); color:#0b2b12; box-shadow:none; }
-    #wizard .btn-success-soft:hover { background:#dff3e7; }
-  </style>
+  
 
   <div class="wizard-header">
     <h1>Home Details</h1>
@@ -48,6 +12,7 @@
   </div>
 
   <div class="card">
+    <div id="saveError" class="wizard-error"></div>
     <div class="inline" aria-live="polite">
       <strong id="stepLabel">Step 1 of 6</strong>
       <span class="muted" id="stepTitle">Home Basics</span>
@@ -58,16 +23,30 @@
       <!-- Step 1: Home Basics -->
       <div class="step active" data-title="Home Basics">
         <h2>Step 1: Home Basics</h2>
-        <p class="muted">Let’s start with the basics about your home.</p>
+        <p class="muted">Let’s start with the basics about your home. Don't worry if you don't know the answer, we'll use the default and you can always come back and edit later.</p>
 
         <div class="form-group">
           <label>Is your home a:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="home_type" value="single_family" required {% if prefill.get('home_type')=='single_family' %}checked{% endif %}> Single-family house</label>
-            <label><input type="radio" name="home_type" value="condo_townhome" {% if prefill.get('home_type')=='condo_townhome' %}checked{% endif %}> Condo/Townhome</label>
-            <label><input type="radio" name="home_type" value="apartment_owned" {% if prefill.get('home_type')=='apartment_owned' %}checked{% endif %}> Apartment (owned)</label>
+          <div class="option-cards" id="homeTypeOptions">
+            <label class="option-card" data-value="single_family">
+              <svg class="icon" aria-hidden="true"><use href="#icon-house"></use></svg>
+              <div class="title">Single-family house</div>
+              <input type="radio" name="home_type" value="single_family" required {% if prefill.get('home_type')=='single_family' %}checked{% endif %}>
+            </label>
+            <label class="option-card" data-value="condo_townhome">
+              <svg class="icon" aria-hidden="true"><use href="#icon-townhouse"></use></svg>
+              <div class="title">Condo/Townhome</div>
+              <input type="radio" name="home_type" value="condo_townhome" {% if prefill.get('home_type')=='condo_townhome' %}checked{% endif %}>
+            </label>
+            <label class="option-card" data-value="apartment_owned">
+              <svg class="icon" aria-hidden="true"><use href="#icon-apartment"></use></svg>
+              <div class="title">Apartment (owned)</div>
+              <input type="radio" name="home_type" value="apartment_owned" {% if prefill.get('home_type')=='apartment_owned' %}checked{% endif %}>
+            </label>
           </div>
         </div>
+
+        <div class="section-divider"></div>
 
         <div class="form-group">
           <label for="year_built">Year built</label>
@@ -83,33 +62,51 @@
             <option value="2010s" {% if prefill.get('year_built')=='2010s' %}selected{% endif %}>2010s</option>
             <option value="2020s" {% if prefill.get('year_built')=='2020s' %}selected{% endif %}>2020s</option>
           </select>
-          <div class="hint">You can refine later if needed.</div>
         </div>
 
         <div class="form-group">
           <label>Approximate size:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="home_size" value="lt_1000" required {% if prefill.get('home_size')=='lt_1000' %}checked{% endif %}> Less than 1,000 sq ft</label>
-            <label><input type="radio" name="home_size" value="1000_2000" {% if prefill.get('home_size')=='1000_2000' %}checked{% endif %}> 1,000–2,000 sq ft</label>
-            <label><input type="radio" name="home_size" value="2000_3000" {% if prefill.get('home_size')=='2000_3000' %}checked{% endif %}> 2,000–3,000 sq ft</label>
-            <label><input type="radio" name="home_size" value="gt_3000" {% if prefill.get('home_size')=='gt_3000' %}checked{% endif %}> 3,000+ sq ft</label>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Less than 1,000 sq ft</div>
+              <input type="radio" name="home_size" value="lt_1000" required {% if prefill.get('home_size')=='lt_1000' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">1,000–2,000 sq ft</div>
+              <input type="radio" name="home_size" value="1000_2000" {% if prefill.get('home_size')=='1000_2000' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">2,000–3,000 sq ft</div>
+              <input type="radio" name="home_size" value="2000_3000" {% if prefill.get('home_size')=='2000_3000' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">3,000+ sq ft</div>
+              <input type="radio" name="home_size" value="gt_3000" {% if prefill.get('home_size')=='gt_3000' %}checked{% endif %}>
+            </label>
           </div>
+          <div class="hint">Rough estimates are okay.</div>
         </div>
 
         <div class="form-group">
           <label>Do you have a yard/outdoor space?</label>
-          <div class="radio-group">
-            <label><input type="radio" name="has_yard" value="yes" required {% if prefill.get('has_yard') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="has_yard" value="no" {% if prefill.get('has_yard') is not none and not prefill.get('has_yard') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="has_yard" value="yes" required {% if prefill.get('has_yard') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="has_yard" value="no" {% if prefill.get('has_yard') is not none and not prefill.get('has_yard') %}checked{% endif %}>
+            </label>
           </div>
         </div>
 
         <div class="form-group">
           <label>Do you have carpet in your home?</label>
-          <div class="radio-group">
-            <label><input type="radio" name="carpet" value="yes" required {% if prefill.get('carpet')=='yes' %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="carpet" value="no" {% if prefill.get('carpet')=='no' %}checked{% endif %}> No</label>
-            <label><input type="radio" name="carpet" value="some" {% if prefill.get('carpet')=='some' %}checked{% endif %}> Some rooms</label>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Yes</div>
+              <input type="radio" name="carpet" value="yes" required {% if prefill.get('carpet')=='yes' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">No</div>
+              <input type="radio" name="carpet" value="no" {% if prefill.get('carpet')=='no' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Some rooms</div>
+              <input type="radio" name="carpet" value="some" {% if prefill.get('carpet')=='some' %}checked{% endif %}>
+            </label>
           </div>
         </div>
       </div>
@@ -121,38 +118,65 @@
 
         <div class="form-group">
           <label>Heating & Cooling:</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" name="has_hvac" {% if prefill.get('has_hvac') %}checked{% endif %}> Central HVAC system</label>
-            <label><input type="checkbox" name="has_window_units" {% if prefill.get('has_window_units') %}checked{% endif %}> Window/mini-split units</label>
-            <label><input type="checkbox" name="has_radiator_boiler" {% if prefill.get('has_radiator_boiler') %}checked{% endif %}> Radiator/boiler system</label>
-            <label><input type="checkbox" name="no_central_hvac" {% if prefill.get('no_central_hvac') %}checked{% endif %}> None</label>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Central HVAC system</div>
+              <input type="checkbox" name="has_hvac" {% if prefill.get('has_hvac') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Window/mini-split units</div>
+              <input type="checkbox" name="has_window_units" {% if prefill.get('has_window_units') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Radiator/boiler system</div>
+              <input type="checkbox" name="has_radiator_boiler" {% if prefill.get('has_radiator_boiler') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">None</div>
+              <input type="checkbox" name="no_central_hvac" {% if prefill.get('no_central_hvac') %}checked{% endif %}>
+            </label>
           </div>
         </div>
 
         <div class="form-group">
           <label>Water System:</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" name="has_water_heater" {% if prefill.get('has_water_heater') %}checked{% endif %}> Water heater</label>
-            <label><input type="checkbox" name="has_water_softener" {% if prefill.get('has_water_softener') %}checked{% endif %}> Water softener</label>
-            <label><input type="checkbox" name="has_well" {% if prefill.get('has_well') %}checked{% endif %}> Well water</label>
-            <label><input type="checkbox" name="has_septic" {% if prefill.get('has_septic') %}checked{% endif %}> Septic system</label>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Water heater</div>
+              <input type="checkbox" name="has_water_heater" {% if prefill.get('has_water_heater') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Water softener</div>
+              <input type="checkbox" name="has_water_softener" {% if prefill.get('has_water_softener') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Well water</div>
+              <input type="checkbox" name="has_well" {% if prefill.get('has_well') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Septic system</div>
+              <input type="checkbox" name="has_septic" {% if prefill.get('has_septic') %}checked{% endif %}>
+            </label>
           </div>
         </div>
 
         <div class="form-group">
           <label>Sump pump?</label>
-          <div class="radio-group">
-            <label><input type="radio" name="has_sump_pump" value="yes" {% if prefill.get('has_sump_pump') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="has_sump_pump" value="no" {% if prefill.get('has_sump_pump') is not none and not prefill.get('has_sump_pump') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="has_sump_pump" value="yes" {% if prefill.get('has_sump_pump') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="has_sump_pump" value="no" {% if prefill.get('has_sump_pump') is not none and not prefill.get('has_sump_pump') %}checked{% endif %}>
+            </label>
           </div>
+          <div class="hint">Basements in wetter areas often have one.</div>
         </div>
 
         <div class="form-group">
           <label>Fireplace:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="fireplace_type" value="wood" {% if prefill.get('fireplace_type')=='wood' %}checked{% endif %}> Wood-burning</label>
-            <label><input type="radio" name="fireplace_type" value="gas" {% if prefill.get('fireplace_type')=='gas' %}checked{% endif %}> Gas</label>
-            <label><input type="radio" name="fireplace_type" value="none" {% if prefill.get('fireplace_type') in [None,'', 'none'] %}checked{% endif %}> None</label>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Wood-burning</div>
+              <input type="radio" name="fireplace_type" value="wood" {% if prefill.get('fireplace_type')=='wood' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Gas</div>
+              <input type="radio" name="fireplace_type" value="gas" {% if prefill.get('fireplace_type')=='gas' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">None</div>
+              <input type="radio" name="fireplace_type" value="none" {% if prefill.get('fireplace_type') in [None,'', 'none'] %}checked{% endif %}>
+            </label>
           </div>
         </div>
       </div>
@@ -161,12 +185,22 @@
       <div class="step" data-title="Appliances">
         <h2>Step 3: Appliances</h2>
         <p class="muted">Which of these do you have in your home?</p>
-        <div class="checkbox-group">
-          <label><input type="checkbox" name="has_dishwasher" {% if prefill.get('has_dishwasher') %}checked{% endif %}> Dishwasher</label>
-          <label><input type="checkbox" name="has_garbage_disposal" {% if prefill.get('has_garbage_disposal') %}checked{% endif %}> Garbage Disposal</label>
-          <label><input type="checkbox" name="has_washer_dryer" {% if prefill.get('has_washer_dryer') %}checked{% endif %}> Washer/Dryer</label>
-          <label><input type="checkbox" name="has_refrigerator_ice" {% if prefill.get('has_refrigerator_ice') %}checked{% endif %}> Refrigerator with water/ice dispenser</label>
-          <label><input type="checkbox" name="has_range_hood" {% if prefill.get('has_range_hood') %}checked{% endif %}> Range Hood</label>
+        <div class="option-cards">
+          <label class="option-card"><div class="title">Dishwasher</div>
+            <input type="checkbox" name="has_dishwasher" {% if prefill.get('has_dishwasher') %}checked{% endif %}>
+          </label>
+          <label class="option-card"><div class="title">Garbage Disposal</div>
+            <input type="checkbox" name="has_garbage_disposal" {% if prefill.get('has_garbage_disposal') %}checked{% endif %}>
+          </label>
+          <label class="option-card"><div class="title">Washer/Dryer</div>
+            <input type="checkbox" name="has_washer_dryer" {% if prefill.get('has_washer_dryer') %}checked{% endif %}>
+          </label>
+          <label class="option-card"><div class="title">Refrigerator with water/ice dispenser</div>
+            <input type="checkbox" name="has_refrigerator_ice" {% if prefill.get('has_refrigerator_ice') %}checked{% endif %}>
+          </label>
+          <label class="option-card"><div class="title">Range Hood</div>
+            <input type="checkbox" name="has_range_hood" {% if prefill.get('has_range_hood') %}checked{% endif %}>
+          </label>
         </div>
       </div>
 
@@ -176,31 +210,49 @@
         <p class="muted">A few questions about the outside of your home.</p>
         <div class="form-group">
           <label>Gutters</label>
-          <div class="radio-group">
-            <label><input type="radio" name="has_gutters" value="yes" {% if prefill.get('has_gutters') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="has_gutters" value="no" {% if prefill.get('has_gutters') is not none and not prefill.get('has_gutters') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="has_gutters" value="yes" {% if prefill.get('has_gutters') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="has_gutters" value="no" {% if prefill.get('has_gutters') is not none and not prefill.get('has_gutters') %}checked{% endif %}>
+            </label>
           </div>
         </div>
         <div class="form-group">
           <label>Garage</label>
-          <div class="radio-group">
-            <label><input type="radio" name="garage_type" value="attached" {% if prefill.get('garage_type')=='attached' %}checked{% endif %}> Attached</label>
-            <label><input type="radio" name="garage_type" value="detached" {% if prefill.get('garage_type')=='detached' %}checked{% endif %}> Detached</label>
-            <label><input type="radio" name="garage_type" value="none" {% if prefill.get('garage_type') in [None,'', 'none'] %}checked{% endif %}> None</label>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Attached</div>
+              <input type="radio" name="garage_type" value="attached" {% if prefill.get('garage_type')=='attached' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Detached</div>
+              <input type="radio" name="garage_type" value="detached" {% if prefill.get('garage_type')=='detached' %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">None</div>
+              <input type="radio" name="garage_type" value="none" {% if prefill.get('garage_type') in [None,'', 'none'] %}checked{% endif %}>
+            </label>
           </div>
         </div>
         <div class="form-group">
           <label>Deck or patio</label>
-          <div class="radio-group">
-            <label><input type="radio" name="has_deck_patio" value="yes" {% if prefill.get('has_deck_patio') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="has_deck_patio" value="no" {% if prefill.get('has_deck_patio') is not none and not prefill.get('has_deck_patio') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="has_deck_patio" value="yes" {% if prefill.get('has_deck_patio') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="has_deck_patio" value="no" {% if prefill.get('has_deck_patio') is not none and not prefill.get('has_deck_patio') %}checked{% endif %}>
+            </label>
           </div>
         </div>
         <div class="form-group">
           <label>Pool or hot tub</label>
-          <div class="radio-group">
-            <label><input type="radio" name="has_pool_hot_tub" value="yes" {% if prefill.get('has_pool_hot_tub') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="has_pool_hot_tub" value="no" {% if prefill.get('has_pool_hot_tub') is not none and not prefill.get('has_pool_hot_tub') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="has_pool_hot_tub" value="yes" {% if prefill.get('has_pool_hot_tub') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="has_pool_hot_tub" value="no" {% if prefill.get('has_pool_hot_tub') is not none and not prefill.get('has_pool_hot_tub') %}checked{% endif %}>
+            </label>
           </div>
         </div>
       </div>
@@ -211,14 +263,18 @@
         <p class="muted">Let’s tailor your tasks to your climate.</p>
         <div class="form-group">
           <label>Does it snow/freeze where you live?</label>
-          <div class="radio-group">
-            <label><input type="radio" name="freezes" value="yes" {% if prefill.get('freezes') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="freezes" value="no" {% if prefill.get('freezes') is not none and not prefill.get('freezes') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="freezes" value="yes" {% if prefill.get('freezes') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="freezes" value="no" {% if prefill.get('freezes') is not none and not prefill.get('freezes') %}checked{% endif %}>
+            </label>
           </div>
         </div>
         <div class="form-group">
           <label>When do you typically consider the start of each season?</label>
-          <div class="inline" style="flex-wrap:wrap; gap:14px;">
+          <div class="inline inline-wrap">
             <div><label>Spring</label><input type="date" name="season_spring" value="{{ prefill.get('season_spring') or '' }}"></div>
             <div><label>Summer</label><input type="date" name="season_summer" value="{{ prefill.get('season_summer') or '' }}"></div>
             <div><label>Fall</label><input type="date" name="season_autumn" value="{{ prefill.get('season_autumn') or '' }}"></div>
@@ -233,21 +289,36 @@
         <p class="muted">Last step — a couple of extras to make things more personal.</p>
         <div class="form-group">
           <label>Do you have pets?</label>
-          <div class="radio-group">
-            <label><input type="radio" name="has_pets" value="yes" {% if prefill.get('has_pets') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="has_pets" value="no" {% if prefill.get('has_pets') is not none and not prefill.get('has_pets') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="has_pets" value="yes" {% if prefill.get('has_pets') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="has_pets" value="no" {% if prefill.get('has_pets') is not none and not prefill.get('has_pets') %}checked{% endif %}>
+            </label>
           </div>
-          <div class="inline" style="margin-top:8px; gap:14px;">
-            <label><input type="checkbox" name="pet_dog" {% if prefill.get('pet_dog') %}checked{% endif %}> Dog</label>
-            <label><input type="checkbox" name="pet_cat" {% if prefill.get('pet_cat') %}checked{% endif %}> Cat</label>
-            <label><input type="checkbox" name="pet_other" {% if prefill.get('pet_other') %}checked{% endif %}> Other</label>
+          <div class="section-sub">What kinds?</div>
+          <div class="option-cards">
+            <label class="option-card"><div class="title">Dog</div>
+              <input type="checkbox" name="pet_dog" {% if prefill.get('pet_dog') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Cat</div>
+              <input type="checkbox" name="pet_cat" {% if prefill.get('pet_cat') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><div class="title">Other</div>
+              <input type="checkbox" name="pet_other" {% if prefill.get('pet_other') %}checked{% endif %}>
+            </label>
           </div>
         </div>
         <div class="form-group">
           <label>Do you travel often or spend extended time away from home?</label>
-          <div class="radio-group">
-            <label><input type="radio" name="travel_often" value="yes" {% if prefill.get('travel_often') %}checked{% endif %}> Yes</label>
-            <label><input type="radio" name="travel_often" value="no" {% if prefill.get('travel_often') is not none and not prefill.get('travel_often') %}checked{% endif %}> No</label>
+          <div class="option-cards">
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg><div class="title">Yes</div>
+              <input type="radio" name="travel_often" value="yes" {% if prefill.get('travel_often') %}checked{% endif %}>
+            </label>
+            <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">No</div>
+              <input type="radio" name="travel_often" value="no" {% if prefill.get('travel_often') is not none and not prefill.get('travel_often') %}checked{% endif %}>
+            </label>
           </div>
         </div>
       </div>
@@ -332,9 +403,66 @@
         }
       }
 
+      // Icon/text option cards: apply selected state for all groups and tie to radios/checkboxes
+      function initOptionCards(){
+        const groups = Array.from(document.querySelectorAll('#wizard .option-cards'));
+        groups.forEach(group => {
+          const cards = Array.from(group.querySelectorAll('.option-card'));
+          const updateSelected = () => {
+            cards.forEach(card => {
+              const input = card.querySelector('input[type="radio"], input[type="checkbox"]');
+              card.classList.toggle('selected', !!input && input.checked);
+            });
+          };
+          // Initial state (prefill)
+          updateSelected();
+          // Click handling
+          cards.forEach(card => {
+            card.addEventListener('click', (e) => {
+              const input = card.querySelector('input[type="radio"], input[type="checkbox"]');
+              if(!input) return;
+              if(input.type === 'radio'){
+                input.checked = true;
+              } else if(input.type === 'checkbox') {
+                input.checked = !input.checked;
+              }
+              updateSelected();
+            });
+          });
+        });
+      }
+
       backBtn.addEventListener('click', goBack);
       nextBtn.addEventListener('click', goNext);
+      initOptionCards();
       show(index);
+
+      // AJAX submit with inline error messaging
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errBox = document.getElementById('saveError');
+        if(errBox){ errBox.style.display='none'; errBox.textContent=''; }
+        try {
+          const fd = new FormData(form);
+          const res = await fetch(`${window.location.origin}${form.getAttribute('action') || '/questionnaire'}`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            body: fd,
+          });
+          const text = await res.text();
+          let data = null; try { data = JSON.parse(text); } catch(_) {}
+          if(res.ok && data && data.ok){
+            window.location.href = data.redirect || '/dashboard';
+            return;
+          }
+          const msg = (data && data.error) || `Save failed (${res.status})`;
+          if(errBox){ errBox.textContent = msg; errBox.style.display = 'block'; }
+        } catch(err){
+          const errBox2 = document.getElementById('saveError');
+          if(errBox2){ errBox2.textContent = 'Save failed. Please try again.'; errBox2.style.display='block'; }
+        }
+      });
     })();
   </script>
 </section>

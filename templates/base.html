@@ -5,20 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
     <title>Home Maintenance Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
 </head>
 <body>
+    {# Inline SVG symbol sprite for reusable icons (must be defined before any <use>) #}
+    {% include 'partials/icons.html' %}
     <div class="container">
-        {% block header %}
-            {% if session.user_id %}
-            <div class="nav">
-                Welcome, {{ session.username }}! | 
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('questionnaire') }}">Update Home Features</a>
-                <a href="{{ url_for('logout') }}">Logout</a>
-            </div>
-            {% endif %}
-        {% endblock %}
+        {% block header %}{% endblock %}
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
@@ -33,6 +29,7 @@
         <!-- JS-driven flash messages container -->
         <div id="flash-messages"></div>
 
+        {% include 'partials/app_header.html' %}
         {% block content %}{% endblock %}
     </div>
     {% block scripts %}{% endblock %}

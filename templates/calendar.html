@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero" aria-label="Calendar">
+  <div class="hero-text">
+    <h1 class="greeting">Calendar</h1>
+    <p class="sub">See upcoming tasks on a monthly calendar.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="btn" href="{{ url_for('calendar_view', year=today_year, month=today_month) }}">Today</a>
+  </div>
+</section>
+
+<div class="task-section span-all">
+  <div class="panel-card">
+    <h3 class="panel-title">{{ year }} – {{ '{:02d}'.format(month) }}</h3>
+
+    <div class="calendar-nav" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <a class="btn ghost" href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}">◀ Previous</a>
+      <a class="btn ghost" href="{{ url_for('calendar_view', year=next_year, month=next_month) }}">Next ▶</a>
+    </div>
+
+    <div class="calendar-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+      {# Weekday headers #}
+      {% for d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] %}
+        <div class="calendar-cell" style="text-align:center; font-weight:700; color: var(--text-sec, #6b7280);">{{ d }}</div>
+      {% endfor %}
+
+      {# Day cells #}
+      {% for day in days %}
+        <div class="calendar-cell {{ '' if day.in_month else 'out-month' }} {{ 'is-today' if day.is_today else '' }} {{ 'is-past' if day.is_past else '' }}">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-weight:700;">{{ day.date.day }}</span>
+          </div>
+          {% if day['items'] %}
+            <ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px;">
+              {% for task in day['items'] %}
+                <li>
+                  <a href="#" class="pill {{ task.priority|lower if task.priority }}" style="font-size:12px; text-decoration:none;"
+                     data-task-id="{{ task.id }}"
+                     data-title="{{ task.title }}"
+                     data-description="{{ task.description or '' }}"
+                     data-frequency="{{ task.frequency_days or '' }}"
+                     data-priority="{{ task.priority or '' }}"
+                     data-category="{{ task.category or '' }}"
+                     data-due-date="{{ task.next_due_date or '' }}"
+                     onclick="openFromCalendar(this); return false;">
+                    {{ task.title }}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div style="color: var(--text-sec, #6b7280); font-size: 12px;">No tasks</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+function openFromCalendar(el){
+  const title = el.dataset.title || '';
+  const q = encodeURIComponent(title);
+  window.location.href = `${window.location.origin}/dashboard?q=${q}`;
+}
+</script>
+{% endblock %}
