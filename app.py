@@ -495,12 +495,20 @@ def register():
             return render_template('register.html')
         
         try:
-            # Check if user already exists
-            existing_user = supabase.table('users').select('id').or_(
-                f'username.eq.{username},email.eq.{email}'
-            ).execute()
-            
-            if existing_user.data:
+            # Check if user already exists (username or email)
+            existing_user = None
+            try:
+                by_username = supabase.table('users').select('id').eq('username', username).execute()
+                if by_username.data:
+                    existing_user = by_username
+                else:
+                    by_email = supabase.table('users').select('id').eq('email', email).execute()
+                    if by_email.data:
+                        existing_user = by_email
+            except Exception:
+                existing_user = None
+
+            if existing_user and existing_user.data:
                 flash('Username or email already exists!')
                 return render_template('register.html')
             
