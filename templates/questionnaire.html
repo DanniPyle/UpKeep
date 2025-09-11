@@ -272,13 +272,47 @@
             </label>
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group season-selector">
           <label>When do you typically consider the start of each season?</label>
           <div class="inline inline-wrap">
-            <div><label>Spring</label><input type="date" name="season_spring" value="{{ prefill.get('season_spring') or '' }}"></div>
-            <div><label>Summer</label><input type="date" name="season_summer" value="{{ prefill.get('season_summer') or '' }}"></div>
-            <div><label>Fall</label><input type="date" name="season_autumn" value="{{ prefill.get('season_autumn') or '' }}"></div>
-            <div><label>Winter</label><input type="date" name="season_winter" value="{{ prefill.get('season_winter') or '' }}"></div>
+            {% set sp = (prefill.get('season_spring') or '') %}
+            {% set su = (prefill.get('season_summer') or '') %}
+            {% set fa = (prefill.get('season_autumn') or '') %}
+            {% set wi = (prefill.get('season_winter') or '') %}
+
+            <div>
+              <label>Spring</label>
+              <select name="season_spring">
+                {% set mm = '03' %}
+                {% set selected = ('-' ~ mm ~ '-') in sp or sp == mm or sp|lower == 'march' %}
+                <option value="03" {{ 'selected' if selected }}>March</option>
+                <option value="04" {{ 'selected' if sp in ['04', 'april', 'April'] or ('-04-') in sp }}>April</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Summer</label>
+              <select name="season_summer">
+                <option value="06" {{ 'selected' if su in ['06', 'june', 'June'] or ('-06-') in su }}>June</option>
+                <option value="07" {{ 'selected' if su in ['07', 'july', 'July'] or ('-07-') in su }}>July</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Fall</label>
+              <select name="season_autumn">
+                <option value="09" {{ 'selected' if fa in ['09', 'september', 'September'] or ('-09-') in fa }}>September</option>
+                <option value="10" {{ 'selected' if fa in ['10', 'october', 'October'] or ('-10-') in fa }}>October</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Winter</label>
+              <select name="season_winter">
+                <option value="12" {{ 'selected' if wi in ['12', 'december', 'December'] or ('-12-') in wi }}>December</option>
+                <option value="01" {{ 'selected' if wi in ['01', 'january', 'January'] or ('-01-') in wi }}>January</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>

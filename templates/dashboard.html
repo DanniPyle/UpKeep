@@ -9,7 +9,7 @@
 
     <!-- Quick Actions Row below hero -->
     <div class="quick-actions">
-        <button id="add-custom-task" class="quick-btn" onclick="showCreateTaskForm()">
+        <button id="add-custom-task" class="quick-btn">
             <span class="qa-icon">+</span>
             Add Custom Task
         </button>
@@ -21,28 +21,63 @@
             <svg class="qa-icon" aria-hidden="true"><use href="#icon-house"></use></svg>
             Home Details
         </a>
+        <a id="task-list" class="quick-btn" href="{{ url_for('task_list') }}">
+            <svg class="qa-icon" aria-hidden="true"><use href="#icon-task-list"></use></svg>
+            Full Task List
+        </a>
     </div>
 
-    <!-- Create Task Form (hidden by default) -->
-    <div id="create-task-form" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-        <h3>Create New Task</h3>
-        <form action="{{ url_for('create_task') }}" method="POST">
-            <div class="form-group">
-                <label for="task-title">Task Name:</label>
-                <input type="text" id="task-title" name="title" required>
+    <!-- Create Task Modal -->
+    <div id="create-modal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Create Custom Task</h3>
+          <button id="create-cancel" type="button">Close</button>
+        </div>
+        <div class="modal-body">
+          <form id="create-form">
+            <div class="form-row">
+              <label for="create-title">Title</label>
+              <input type="text" id="create-title" name="title" required />
+              <div class="error-text" id="create-title-error"></div>
             </div>
-            <div class="form-group">
-                <label for="task-description">Description:</label>
-                <textarea id="task-description" name="description" rows="3"></textarea>
+            <div class="form-row">
+              <label for="create-description">Description</label>
+              <textarea id="create-description" name="description" rows="3"></textarea>
             </div>
-            <div class="form-group">
-                <label for="task-frequency">Frequency (days):</label>
-                <input type="number" id="task-frequency" name="frequency_days" min="1" required>
-                <small>How often should this task repeat? (e.g., 30 for monthly, 365 for yearly)</small>
+            <div class="form-row">
+              <label for="create-frequency">Frequency (days)</label>
+              <input type="number" id="create-frequency" name="frequency_days" min="1" required />
+              <div class="error-text" id="create-frequency-error"></div>
             </div>
-            <button type="submit" style="background-color: #28a745;">Create Task</button>
-            <button type="button" onclick="hideCreateTaskForm()" style="background-color: #6c757d;">Cancel</button>
-        </form>
+            <div class="form-row">
+              <label for="create-due-date">Due date</label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input type="date" id="create-due-date" name="next_due_date" />
+                <button id="create-due-today" type="button" class="btn-ghost">Today</button>
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="create-priority">Priority</label>
+              <select id="create-priority" name="priority">
+                <option value="">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="create-category">Category</label>
+              <input type="text" id="create-category" name="category" />
+            </div>
+          </form>
+          <div class="hint">Tip: Set a due date to place this task on your calendar immediately.</div>
+        </div>
+        <div class="modal-actions">
+          <button id="create-save" type="button">Create</button>
+        </div>
+      </div>
+      <div class="modal-backdrop"></div>
     </div>
 
     <div class="top-panels">
@@ -440,6 +475,7 @@ function hideCreateTaskForm() {
         </div>
         <div class="modal-actions">
             <button id="edit-save" type="button">Save</button>
+            <button id="edit-delete" type="button" class="btn-ghost" style="margin-left: 8px; color:#b42318; border-color: rgba(180,35,24,0.25);">Delete</button>
         </div>
     </div>
     <div class="modal-backdrop"></div>
@@ -456,6 +492,15 @@ function hideCreateTaskForm() {
   const editModal = $('#edit-modal');
   const editForm = $('#edit-form');
   const editSave = $('#edit-save');
+  const editDelete = $('#edit-delete');
+
+  // Create modal wiring
+  const createModal = $('#create-modal');
+  const createOpen = $('#add-custom-task');
+  const createCancel = $('#create-cancel');
+  const createSave = $('#create-save');
+  const createForm = $('#create-form');
+  const createDueToday = $('#create-due-today');
 
   let currentEditTaskId = null;
 
@@ -495,6 +540,72 @@ function hideCreateTaskForm() {
       // Simple debug hook (visible in console)
       try { console.debug('Edit populate', { id: currentEditTaskId, pri, due, freq: $('#edit-frequency').value }); } catch(_) {}
       open(editModal);
+    }
+  });
+
+  // Open/close Create modal
+  createOpen?.addEventListener('click', () => open(createModal));
+  createCancel?.addEventListener('click', () => close(createModal));
+  createDueToday?.addEventListener('click', () => {
+    const inp = document.getElementById('create-due-date');
+    if(!inp) return;
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    inp.value = `${yyyy}-${mm}-${dd}`;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // Validate simple fields for Create
+  function validateCreate(){
+    const t = $('#create-title');
+    const f = $('#create-frequency');
+    const te = $('#create-title-error');
+    const fe = $('#create-frequency-error');
+    let ok = true;
+    if(!t.value.trim()){ ok=false; t.classList.add('invalid'); if(te) te.textContent='Title is required.'; } else { t.classList.remove('invalid'); if(te) te.textContent=''; }
+    const fv = parseInt(f.value, 10);
+    if(!fv || fv<=0){ ok=false; f.classList.add('invalid'); if(fe) fe.textContent='Enter a positive number of days.'; } else { f.classList.remove('invalid'); if(fe) fe.textContent=''; }
+    return ok;
+  }
+
+  createSave?.addEventListener('click', async () => {
+    if(!validateCreate()) return;
+    const fd = new FormData(createForm);
+    try {
+      const res = await fetch(`${window.location.origin}/create_task`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+        body: fd
+      });
+      if(!res.ok){ throw new Error(`Failed (${res.status})`); }
+      window.location.reload();
+    } catch(err){
+      const te = $('#create-title-error');
+      if(te){ te.textContent = 'Failed to create task. Please try again.'; }
+    }
+  });
+
+  // Delete task from Edit modal
+  editDelete?.addEventListener('click', async () => {
+    if(!currentEditTaskId) return;
+    const confirmed = window.confirm('Delete this task? This cannot be undone.');
+    if(!confirmed) return;
+    try {
+      const res = await fetch(`${window.location.origin}/delete_task/${currentEditTaskId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+      });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok){ throw new Error((data && data.error) || `Failed (${res.status})`); }
+      // Success: reload dashboard
+      window.location.reload();
+    } catch(err){
+      alert('Failed to delete task.');
     }
   });
 

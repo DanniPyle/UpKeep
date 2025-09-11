@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero" aria-label="Task detail">
+  <div class="hero-text">
+    <h1 class="greeting">{{ task.title }}</h1>
+    <p class="sub">Full details, history, and references.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="{{ url_for('tasks') if false else url_for('task_list') }}">Back to Task List</a>
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+
+<div class="grid cols-2 gap">
+  <div class="panel-card">
+    <h3 class="panel-title">Overview</h3>
+    <div class="task-card">
+      <div class="card-header">
+        <div class="title">{{ task.title }}</div>
+        {% if task.description %}<div class="desc">{{ task.description }}</div>{% endif %}
+        <div class="corner-dot"></div>
+      </div>
+      <div class="card-body">
+        <div class="info">
+          <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
+          <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
+          <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+          <div class="info-item"><span class="label">Category</span><span class="value">{{ task.category or '-' }}</span></div>
+          <div class="info-item"><span class="label">Status</span><span class="value">{{ 'Archived' if task.archived else ('Completed' if task.is_completed else 'Active') }}</span></div>
+        </div>
+        <div class="actions">
+          {% if not task.archived %}
+          <a class="btn ghost edit-btn" href="#"
+             data-task-id="{{ task.id }}"
+             data-title="{{ task.title }}"
+             data-description="{{ task.description or '' }}"
+             data-frequency="{{ task.frequency_days or '' }}"
+             data-priority="{{ task.priority or '' }}"
+             data-category="{{ task.category or '' }}"
+             data-due-date="{{ task.next_due_date or '' }}">
+            <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+            Edit
+          </a>
+          {% endif %}
+          {% if task.archived %}
+          <form method="post" action="{{ url_for('restore_task', task_id=task.id) }}" style="display:inline;">
+            <button class="btn-ghost" type="submit" onclick="return confirm('Restore this task?');">Restore</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <h3 class="panel-title">History</h3>
+    {% include 'partials/history_list.html' %}
+  </div>
+
+  <div class="panel-card span-2">
+    <h3 class="panel-title">Cost</h3>
+    <p class="muted">Coming soon — track materials and costs here.</p>
+  </div>
+
+  <div class="panel-card span-2">
+    <h3 class="panel-title">Parts & Materials</h3>
+    <p class="muted">Coming soon — keep a list of parts, materials, and where to buy.</p>
+  </div>
+
+  <div class="panel-card span-2">
+    <h3 class="panel-title">How-To / Knowledge</h3>
+    <p class="muted">Coming soon — links, checklists, and notes for completing this task.</p>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Reuse edit/history modals from dashboard for consistency -->
+<div id="history-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Task History</h3>
+      <button id="close-history" type="button">Close</button>
+    </div>
+    <div id="history-body" class="modal-body"></div>
+  </div>
+  <div class="modal-backdrop"></div>
+</div>
+
+<div id="edit-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Task</h3>
+      <button id="edit-cancel" type="button">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="edit-form">
+        <div class="form-row">
+          <label for="edit-title">Title</label>
+          <input type="text" id="edit-title" required />
+          <div class="error-text" id="edit-title-error"></div>
+        </div>
+        <div class="form-row">
+          <label for="edit-description">Description</label>
+          <textarea id="edit-description" rows="3"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="edit-frequency">Frequency (days)</label>
+          <input type="number" id="edit-frequency" min="1" required />
+          <div class="error-text" id="edit-frequency-error"></div>
+        </div>
+        <div class="form-row">
+          <label for="edit-due-date">Due date</label>
+          <input type="date" id="edit-due-date" />
+        </div>
+        <div class="form-row">
+          <label for="edit-priority">Priority</label>
+          <select id="edit-priority">
+            <option value="">None</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="edit-category">Category</label>
+          <input type="text" id="edit-category" />
+        </div>
+      </form>
+    </div>
+    <div class="modal-actions">
+      <button id="edit-save" type="button">Save</button>
+      <button id="edit-delete" type="button" class="btn-ghost" style="margin-left: 8px; color:#b42318; border-color: rgba(180,35,24,0.25);">Delete</button>
+    </div>
+  </div>
+  <div class="modal-backdrop"></div>
+</div>
+
+<script>
+(function(){
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const historyModal = $('#history-modal');
+  const historyBody = $('#history-body');
+  const editModal = $('#edit-modal');
+  let currentEditTaskId = {{ task.id }};
+
+  function open(el){ if(el){ el.style.display='flex'; document.body.style.overflow='hidden'; } }
+  function close(el){ if(el){ el.style.display='none'; document.body.style.overflow=''; } }
+
+  // Open history modal populated from server
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('a,button');
+    if(!btn) return;
+    if(btn.classList.contains('history-btn')){
+      e.preventDefault();
+      historyBody.innerHTML = '<p>Loading history…</p>';
+      open(historyModal);
+      fetch(`/tasks/${currentEditTaskId}/history`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }})
+        .then(r => r.ok ? r.text() : Promise.reject(new Error('Failed to load')))
+        .then(html => { historyBody.innerHTML = html; })
+        .catch(() => { historyBody.innerHTML = '<p>Unable to load history right now.</p>'; });
+    }
+  });
+
+  // Populate edit form from task object
+  (function init(){
+    const t = {{ task|tojson }};
+    $('#edit-title').value = t.title || '';
+    $('#edit-description').value = t.description || '';
+    $('#edit-frequency').value = t.frequency_days || '';
+    $('#edit-priority').value = (t.priority || '').toLowerCase();
+    $('#edit-category').value = t.category || '';
+    if(t.next_due_date){
+      const d = new Date(t.next_due_date);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      $('#edit-due-date').value = `${yyyy}-${mm}-${dd}`;
+    }
+  })();
+
+  // Save edit
+  $('#edit-save')?.addEventListener('click', async () => {
+    const fd = new FormData();
+    fd.set('title', $('#edit-title').value.trim());
+    fd.set('description', $('#edit-description').value.trim());
+    fd.set('frequency_days', $('#edit-frequency').value);
+    fd.set('next_due_date', $('#edit-due-date').value);
+    fd.set('priority', ($('#edit-priority').value || '').toLowerCase());
+    fd.set('category', $('#edit-category').value.trim());
+    try {
+      const res = await fetch(`${window.location.origin}/edit_task/${currentEditTaskId}`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: fd
+      });
+      const text = await res.text();
+      let data = null; try { data = JSON.parse(text); } catch(_) {}
+      if(!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || `Failed (${res.status})`);
+      window.location.reload();
+    } catch(err){
+      alert('Save failed. Please try again.');
+    }
+  });
+
+  // Delete (archive) from detail page
+  $('#edit-delete')?.addEventListener('click', async () => {
+    if(!window.confirm('Delete this task? This will archive it.')) return;
+    try {
+      const res = await fetch(`${window.location.origin}/delete_task/${currentEditTaskId}`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+      });
+      if(!res.ok){ throw new Error('Failed'); }
+      window.location.href = '{{ url_for('task_list') }}';
+    } catch(err){ alert('Failed to delete task.'); }
+  });
+
+  // Close modals
+  document.getElementById('close-history')?.addEventListener('click', () => close(historyModal));
+  document.getElementById('edit-cancel')?.addEventListener('click', () => close(editModal));
+})();
+</script>
+{% endblock %}

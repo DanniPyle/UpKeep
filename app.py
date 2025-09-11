@@ -446,7 +446,7 @@ def reactivate_due_tasks(user_id):
     try:
         supabase.table('tasks').update({
             'is_completed': False
-        }).eq('user_id', user_id).eq('is_completed', True).lte('next_due_date', today).execute()
+        }).eq('user_id', user_id).eq('is_completed', True).eq('archived', False).lte('next_due_date', today).execute()
     except Exception as e:
         print(f"Error reactivating tasks: {e}")
 
@@ -715,11 +715,11 @@ def dashboard():
         reactivate_due_tasks(user_id)
         
         # Get all active tasks (not marked as completed in current cycle)
-        tasks_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', False).order('next_due_date').execute()
+        tasks_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', False).eq('archived', False).order('next_due_date').execute()
         tasks = tasks_result.data or []
         
         # Get recently completed tasks
-        completed_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', True).order('last_completed', desc=True).limit(10).execute()
+        completed_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', True).eq('archived', False).order('last_completed', desc=True).limit(10).execute()
         completed_tasks = completed_result.data or []
 
         # Optional search filter from querystring
@@ -835,6 +835,7 @@ def calendar_view():
                         .select('*')
                         .eq('user_id', user_id)
                         .eq('is_completed', False)
+                        .eq('archived', False)
                         .gte('next_due_date', grid_start.isoformat())
                         .lte('next_due_date', grid_end.isoformat())
                         .order('next_due_date')
@@ -883,6 +884,86 @@ def calendar_view():
                            today_year=today.year,
                            today_month=today.month)
 
+@app.route('/tasks')
+def task_list():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    q = (request.args.get('q') or '').strip().lower()
+    sort = (request.args.get('sort') or 'due').strip().lower()
+    show_archived = (str(request.args.get('show_archived') or 'false').lower() in ('1','true','yes','y'))
+    try:
+        # Fetch tasks; include archived if requested
+        qb = (supabase
+              .table('tasks')
+              .select('*')
+              .eq('user_id', user_id))
+        if not show_archived:
+            qb = qb.eq('archived', False)
+        res = qb.execute()
+        tasks = res.data or []
+        if q:
+            def _match(t):
+                return q in (t.get('title','').lower()) or q in (t.get('description','').lower())
+            tasks = [t for t in tasks if _match(t)]
+        # Apply sort
+        if sort == 'title':
+            tasks.sort(key=lambda t: (t.get('title') or '').lower())
+        elif sort == 'priority':
+            order = {'high': 0, 'medium': 1, 'low': 2}
+            tasks.sort(key=lambda t: (order.get((t.get('priority') or '').lower(), 99), (t.get('title') or '').lower()))
+        else:  # due
+            from datetime import date as _date
+            far = _date.max
+            def _due(t):
+                d = t.get('next_due_date')
+                try:
+                    return datetime.fromisoformat(d).date() if d else far
+                except Exception:
+                    return far
+            tasks.sort(key=lambda t: (_due(t), (t.get('title') or '').lower()))
+    except Exception as e:
+        flash(f'Error loading tasks: {str(e)}')
+        tasks = []
+
+    return render_template('tasks.html', tasks=tasks, sort=sort, show_archived=show_archived)
+
+@app.route('/task/<int:task_id>')
+def task_detail(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = session['user_id']
+    try:
+        # Load the task, allow viewing even if archived (owner-only)
+        tres = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
+        if not tres.data:
+            flash('Task not found')
+            return redirect(url_for('task_list'))
+        task = tres.data[0]
+        # Load history (newest first)
+        hres = supabase.table('task_history').select('*').eq('task_id', task_id).eq('user_id', user_id).order('created_at', desc=True).execute()
+        history = hres.data or []
+        return render_template('task_detail.html', task=task, history=history)
+    except Exception as e:
+        flash(f'Error loading task: {str(e)}')
+        return redirect(url_for('task_list'))
+
+@app.route('/restore_task/<int:task_id>', methods=['POST'])
+def restore_task(task_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user_id = session['user_id']
+    try:
+        # Ensure the task belongs to the user and is archived
+        res = supabase.table('tasks').select('id,archived').eq('id', task_id).eq('user_id', user_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Task not found'}), 404
+        supabase.table('tasks').update({'archived': False}).eq('id', task_id).eq('user_id', user_id).execute()
+        return jsonify({'message': 'Task restored'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/complete_task/<int:task_id>')
 def complete_task(task_id):
     if 'user_id' not in session:
@@ -892,7 +973,7 @@ def complete_task(task_id):
     
     try:
         # Get task details
-        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).execute()
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).eq('user_id', user_id).eq('archived', False).execute()
         
         if task_result.data:
             task = task_result.data[0]
@@ -992,18 +1073,22 @@ def create_task():
             return redirect(url_for('dashboard'))
     
     try:
-        # Calculate next due date
-        next_due = datetime.now() + timedelta(days=frequency_days)
-        
+        # Determine next due date: prefer user-provided, else compute from frequency
+        next_due_iso = next_due_date or (datetime.now() + timedelta(days=frequency_days)).date().isoformat()
         # Insert new task
-        supabase.table('tasks').insert({
+        payload = {
             'user_id': user_id,
             'title': title,
             'description': description,
             'frequency_days': frequency_days,
-            'next_due_date': next_due.date().isoformat(),
-            'is_completed': False
-        }).execute()
+            'next_due_date': next_due_iso,
+            'is_completed': False,
+        }
+        if priority is not None:
+            payload['priority'] = priority
+        if category is not None:
+            payload['category'] = category
+        supabase.table('tasks').insert(payload).execute()
         
         flash(f'Task "{title}" created successfully!')
         
@@ -1271,7 +1356,7 @@ def edit_task(task_id):
             payload['priority'] = priority
 
         # Update task
-        db_res = supabase.table('tasks').update(payload).eq('id', task_id).eq('user_id', user_id).execute()
+        db_res = supabase.table('tasks').update(payload).eq('id', task_id).eq('user_id', user_id).eq('archived', False).execute()
 
         if is_ajax:
             # Include a snapshot of incoming form to debug client/server mismatch
@@ -1308,10 +1393,20 @@ def delete_task(task_id):
         if not task_result.data:
             return jsonify({'error': 'Task not found'}), 404
         
-        # Delete task
-        supabase.table('tasks').delete().eq('id', task_id).eq('user_id', user_id).execute()
-        
-        return jsonify({'message': 'Task deleted successfully'})
+        # Soft archive task
+        supabase.table('tasks').update({'archived': True}).eq('id', task_id).eq('user_id', user_id).execute()
+        # Optional: record an entry in history as a neutral action (using 'snoozed' slot)
+        try:
+            supabase.table('task_history').insert({
+                'user_id': user_id,
+                'task_id': task_id,
+                'action': 'snoozed',
+                'delta_days': None,
+                'created_at': datetime.utcnow().isoformat()
+            }).execute()
+        except Exception:
+            pass
+        return jsonify({'message': 'Task archived'})
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500

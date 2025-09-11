@@ -467,14 +467,6 @@ function setupEventListeners() {
             closeEditModal();
         }
     });
-
-    // Quick action: Add Custom Task (placeholder)
-    const addCustomTaskBtn = document.getElementById('add-custom-task');
-    if (addCustomTaskBtn) {
-        addCustomTaskBtn.addEventListener('click', () => {
-            showFlashMessage('Add Custom Task coming soon');
-        });
-    }
 }
 
 // Auth functions

@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero" aria-label="All Tasks">
+  <div class="hero-text">
+    <h1 class="greeting">Task List</h1>
+    <p class="sub">Browse and manage all of your tasks.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+
+<div class="task-section span-all" aria-label="All tasks">
+  <div class="panel-card">
+    <h3 class="panel-title">All Tasks</h3>
+    <form method="get" action="{{ url_for('task_list') }}" style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+      <input type="search" name="q" placeholder="Search by title or description" value="{{ request.args.get('q','') }}" style="flex:1; min-width:240px;" />
+      <label for="sort" class="section-sub" style="margin: 0 6px 0 0;">Sort</label>
+      <select id="sort" name="sort">
+        <option value="due" {{ 'selected' if (sort or 'due') == 'due' }}>Due date</option>
+        <option value="priority" {{ 'selected' if sort == 'priority' }}>Priority</option>
+        <option value="title" {{ 'selected' if sort == 'title' }}>Title</option>
+      </select>
+      <label style="display:inline-flex; align-items:center; gap:6px;">
+        <input type="checkbox" name="show_archived" value="true" {% if show_archived %}checked{% endif %} onchange="this.form.submit()" />
+        Show archived
+      </label>
+      <button class="btn" type="submit">Apply</button>
+    </form>
+
+    {% if not tasks %}
+      <p>No tasks found.</p>
+    {% else %}
+      <div class="task-card-list">
+        {% for t in tasks %}
+          {% set due_date = t.next_due_date if t.next_due_date is defined else t['next_due_date'] %}
+          <div class="task-card {{ 'muted' if t.archived }}">
+            <div class="card-header">
+              <div class="title">{{ t.title }}</div>
+              {% if t.description %}<div class="desc">{{ t.description }}</div>{% endif %}
+              <div class="corner-dot"></div>
+            </div>
+            <div class="card-body">
+              <div class="info">
+                <div class="info-item"><span class="label">Due date</span><span class="value">{{ (due_date or '-')|due_label }}</span></div>
+                <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ t.priority|lower if t.priority }}">{{ t.priority or '-' }}</span></span></div>
+                <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ t.frequency_days ~ ' days' if t.frequency_days else '-' }}</span></span></div>
+              </div>
+              <div class="actions">
+                {% if not t.is_completed and not t.archived %}
+                  <a class="btn primary" href="{{ url_for('complete_task', task_id=t.id) }}">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
+                    Complete
+                  </a>
+                {% endif %}
+                <a class="btn ghost" href="{{ url_for('task_detail', task_id=t.id) }}">
+                  View
+                </a>
+                {% if not t.archived %}
+                <a class="btn ghost edit-btn" href="#"
+                   data-task-id="{{ t.id }}"
+                   data-title="{{ t.title }}"
+                   data-description="{{ t.description or '' }}"
+                   data-frequency="{{ t.frequency_days or '' }}"
+                   data-priority="{{ t.priority or '' }}"
+                   data-category="{{ t.category or '' }}"
+                   data-due-date="{{ due_date or '' }}">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+                  Edit
+                </a>
+                {% endif %}
+                <a class="btn ghost history-btn" href="#" data-task-id="{{ t.id }}">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                  History
+                </a>
+                {% if t.archived %}
+                <form method="post" action="{{ url_for('restore_task', task_id=t.id) }}" style="display:inline;">
+                  <button class="btn-ghost" type="submit" onclick="return confirm('Restore this task?');">Restore</button>
+                </form>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Reuse the same simple modals and handlers as dashboard page -->
+<div id="history-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Task History</h3>
+      <button id="close-history" type="button">Close</button>
+    </div>
+    <div id="history-body" class="modal-body"></div>
+  </div>
+  <div class="modal-backdrop"></div>
+</div>
+
+<div id="edit-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Task</h3>
+      <button id="edit-cancel" type="button">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="edit-form">
+        <div class="form-row">
+          <label for="edit-title">Title</label>
+          <input type="text" id="edit-title" required />
+          <div class="error-text" id="edit-title-error"></div>
+        </div>
+        <div class="form-row">
+          <label for="edit-description">Description</label>
+          <textarea id="edit-description" rows="3"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="edit-frequency">Frequency (days)</label>
+          <input type="number" id="edit-frequency" min="1" required />
+          <div class="error-text" id="edit-frequency-error"></div>
+        </div>
+        <div class="form-row">
+          <label for="edit-due-date">Due date</label>
+          <input type="date" id="edit-due-date" />
+        </div>
+        <div class="form-row">
+          <label for="edit-priority">Priority</label>
+          <select id="edit-priority">
+            <option value="">None</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="edit-category">Category</label>
+          <input type="text" id="edit-category" />
+        </div>
+      </form>
+    </div>
+    <div class="modal-actions">
+      <button id="edit-save" type="button">Save</button>
+      <button id="edit-delete" type="button" class="btn-ghost" style="margin-left: 8px; color:#b42318; border-color: rgba(180,35,24,0.25);">Delete</button>
+    </div>
+  </div>
+  <div class="modal-backdrop"></div>
+</div>
+
+<script>
+(function(){
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const historyModal = $('#history-modal');
+  const historyBody = $('#history-body');
+  const editModal = $('#edit-modal');
+  let currentEditTaskId = null;
+
+  function open(el){ if(el){ el.style.display='flex'; document.body.style.overflow='hidden'; } }
+  function close(el){ if(el){ el.style.display='none'; document.body.style.overflow=''; } }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('a,button');
+    if(!btn) return;
+
+    if(btn.classList.contains('history-btn')){
+      e.preventDefault();
+      const taskId = btn.getAttribute('data-task-id');
+      historyBody.innerHTML = '<p>Loading history…</p>';
+      open(historyModal);
+      fetch(`/tasks/${taskId}/history`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }})
+        .then(r => r.ok ? r.text() : Promise.reject(new Error('Failed to load')))
+        .then(html => { historyBody.innerHTML = html; })
+        .catch(() => { historyBody.innerHTML = '<p>Unable to load history right now.</p>'; });
+    }
+
+    if(btn.classList.contains('edit-btn')){
+      e.preventDefault();
+      currentEditTaskId = btn.getAttribute('data-task-id');
+      $('#edit-title').value = btn.getAttribute('data-title') || '';
+      $('#edit-description').value = btn.getAttribute('data-description') || '';
+      $('#edit-frequency').value = btn.getAttribute('data-frequency') || '';
+      const pri = (btn.getAttribute('data-priority') || '').toLowerCase();
+      $('#edit-priority').value = ['low','medium','high'].includes(pri) ? pri : '';
+      $('#edit-category').value = btn.getAttribute('data-category') || '';
+      const rawDue = btn.getAttribute('data-due-date') || '';
+      const due = rawDue ? rawDue.slice(0,10) : '';
+      $('#edit-due-date').value = due;
+      open(editModal);
+    }
+  });
+
+  $('#close-history')?.addEventListener('click', () => close(historyModal));
+  $('#edit-cancel')?.addEventListener('click', () => close(editModal));
+
+  $('#edit-save')?.addEventListener('click', async () => {
+    if(!currentEditTaskId) return;
+    const fd = new FormData();
+    fd.set('title', $('#edit-title').value.trim());
+    fd.set('description', $('#edit-description').value.trim());
+    fd.set('frequency_days', $('#edit-frequency').value);
+    fd.set('next_due_date', $('#edit-due-date').value);
+    fd.set('priority', ($('#edit-priority').value || '').toLowerCase());
+    fd.set('category', $('#edit-category').value.trim());
+    try {
+      const res = await fetch(`${window.location.origin}/edit_task/${currentEditTaskId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        body: fd
+      });
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch(_) {}
+      if(!res.ok || (data && data.ok === false)){
+        throw new Error((data && data.error) || `Failed to save (${res.status})`);
+      }
+      window.location.reload();
+    } catch(err){
+      const errEl = document.getElementById('edit-title-error');
+      if(errEl){ errEl.textContent = 'Save failed. Please try again.'; }
+    }
+  });
+
+  $('#edit-delete')?.addEventListener('click', async () => {
+    if(!currentEditTaskId) return;
+    if(!window.confirm('Delete this task? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`${window.location.origin}/delete_task/${currentEditTaskId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+      });
+      if(!res.ok){ throw new Error('Failed'); }
+      window.location.reload();
+    } catch(err){
+      alert('Failed to delete task.');
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -1065,6 +1065,12 @@ textarea {
 #wizard label { font-weight: 600; }
 #wizard .section-divider { margin: 22px 0; height: 1px; background: rgba(0,0,0,0.06); border-radius: 999px; }
 #wizard .section-sub { margin: 0 0 10px; color:#6b7280; font-weight:600; font-size:14px; }
+#wizard .season-selector .inline { 
+    justify-content: space-between;
+    & > div {
+        flex: 1;
+    }
+ }
 
 /* Wizard button look to match task cards */
 #wizard .btn {

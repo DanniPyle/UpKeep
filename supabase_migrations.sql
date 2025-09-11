@@ -151,6 +151,17 @@ END$$;
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_category ON public.tasks(category);
 CREATE INDEX IF NOT EXISTS idx_tasks_next_due ON public.tasks(next_due_date);
+-- Soft archive flag for tasks
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'archived'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN archived boolean NOT NULL DEFAULT false;
+        CREATE INDEX IF NOT EXISTS idx_tasks_archived ON public.tasks(archived);
+    END IF;
+END$$;
 
 -- 2) Task history table
 CREATE TABLE IF NOT EXISTS public.task_history (
