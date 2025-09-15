@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from supabase import create_client
 from datetime import datetime, timedelta, date
 import os
+from os import makedirs
+from os.path import join, exists
 import jwt
 from functools import wraps
 from dotenv import load_dotenv
@@ -158,6 +161,17 @@ EXPECTED_COLUMNS = [
     'season_code', 'season_anchor_month', 'season_anchor_day', 'overlap_group',
     'variant_rank', 'safety_critical', 'notes'
 ]
+
+# Onboarding ramp settings to avoid flooding new users with too many immediate tasks
+RAMP_SETTINGS = {
+    'enabled': True,
+    # Tasks with next due within this window are considered "near-term" and kept
+    'near_term_days': 21,
+    # How many non-critical tasks to make active immediately on first seed
+    'initial_cap': 8,
+    # Stagger the rest over this many weeks
+    'stagger_weeks': 8,
+}
 
 def _parse_bool(val, default=None):
     if val is None:
@@ -359,6 +373,7 @@ def _insert_tasks_for_user(user_id, rows):
         title = (r.get('title') or '').strip()
         if not title:
             continue
+        task_key = (r.get('task_key') or '').strip() or None
         description = (r.get('description') or '').strip()
         category = (r.get('category') or '').strip() or None
         priority = (r.get('priority') or '').strip().lower() or None
@@ -376,6 +391,7 @@ def _insert_tasks_for_user(user_id, rows):
 
         to_insert.append({
             'user_id': user_id,
+            'task_key': task_key,
             'title': title,
             'description': description,
             'frequency_days': frequency_days,
@@ -394,12 +410,140 @@ def _insert_tasks_for_user(user_id, rows):
     if to_insert:
         supabase.table('tasks').insert(to_insert).execute()
 
+def _apply_onboarding_ramp(rows, today=None, first_seed=False):
+    """Mutate CSV row dicts in-place to add start_offset_days for non-critical tasks.
+    Rules:
+      - If not first_seed or ramp disabled: no-op
+      - Safety-critical (safety_critical=true) always kept immediate
+      - Seasonal tasks whose computed next_due is within near_term_days kept immediate
+      - Up to initial_cap other tasks kept immediate (by priority/category ordering)
+      - Remaining tasks are staggered across stagger_weeks by setting start_offset_days
+    """
+    if not first_seed or not RAMP_SETTINGS.get('enabled', True):
+        return rows
+    if today is None:
+        today = datetime.now().date()
+
+    near_term_days = int(RAMP_SETTINGS.get('near_term_days', 21))
+    initial_cap = int(RAMP_SETTINGS.get('initial_cap', 8))
+    stagger_weeks = max(1, int(RAMP_SETTINGS.get('stagger_weeks', 8)))
+
+    # Prepare scored list
+    scored = []
+    immediate = []
+    later = []
+    for r in rows:
+        seasonal = _parse_bool(r.get('seasonal'), default=False)
+        priority = (r.get('priority') or '').strip().lower()
+        safety = _parse_bool(r.get('safety_critical'), default=False)
+        # compute next_due as if no offset
+        nd = _compute_next_due_date(r, today)
+        days_out = (nd - today).days
+        score = 0
+        if safety:
+            score += 100
+        if priority == 'high':
+            score += 20
+        elif priority == 'medium':
+            score += 10
+        if seasonal and days_out <= near_term_days:
+            score += 15
+        scored.append((score, days_out, r))
+
+    # Sort by score desc, then soonest due
+    scored.sort(key=lambda t: (-t[0], t[1]))
+
+    # Keep all safety immediate
+    for _, _, r in scored:
+        if _parse_bool(r.get('safety_critical'), default=False):
+            immediate.append(r)
+        else:
+            later.append(r)
+
+    # Pull near-term seasonal into immediate
+    near_term = [r for r in later if _parse_bool(r.get('seasonal'), default=False) and (_compute_next_due_date(r, today) - today).days <= near_term_days]
+    for r in near_term:
+        if r in later:
+            later.remove(r)
+            immediate.append(r)
+
+    # Fill remaining immediate up to cap
+    remaining_slots = max(0, initial_cap - len([r for r in immediate if not _parse_bool(r.get('seasonal'), default=False)]))
+    for _, _, r in scored:
+        if r in immediate:
+            continue
+        if remaining_slots <= 0:
+            break
+        immediate.append(r)
+        if r in later:
+            later.remove(r)
+        remaining_slots -= 1
+
+    # Stagger the rest across weeks
+    if later:
+        per_week = max(1, len(later) // stagger_weeks + (1 if len(later) % stagger_weeks else 0))
+        week = 0
+        count = 0
+        for r in later:
+            # Only set offset if not already defined in CSV
+            if _parse_int(r.get('start_offset_days'), default=None) is None:
+                r['start_offset_days'] = str(7 * week)
+            count += 1
+            if count >= per_week:
+                count = 0
+                week += 1
+    return rows
+
+def _backfill_from_templates(user_id, features):
+    """Insert tasks from TASK_TEMPLATES for enabled features that are not already present.
+    Uses title-based de-duplication so catalog entries win.
+    """
+    try:
+        # Titles already present for user
+        existing = supabase.table('tasks').select('title').eq('user_id', user_id).execute()
+        existing_titles = { (row.get('title') or '').strip().lower() for row in (existing.data or []) }
+        to_insert = []
+        today = datetime.now().date()
+        for feature, enabled in features.items():
+            if not enabled:
+                continue
+            if feature not in TASK_TEMPLATES:
+                continue
+            for t in TASK_TEMPLATES[feature]:
+                title = (t.get('title') or '').strip()
+                if not title or title.lower() in existing_titles:
+                    continue
+                freq = int(t.get('frequency_days') or 30)
+                next_due = today + timedelta(days=freq)
+                to_insert.append({
+                    'user_id': user_id,
+                    'title': title,
+                    'description': t.get('description') or None,
+                    'frequency_days': freq,
+                    'next_due_date': next_due.isoformat(),
+                    'is_completed': False,
+                    'priority': None,
+                    'category': None
+                })
+        if to_insert:
+            supabase.table('tasks').insert(to_insert).execute()
+    except Exception as e:
+        print(f"Error backfilling templates: {e}")
+
 def seed_tasks_from_catalog_rows(user_id, features, all_rows):
-    """Clear existing tasks and seed from provided catalog rows, filtered & overlap-resolved."""
+    """Clear existing tasks and seed from provided catalog rows, filtered & overlap-resolved.
+    Applies onboarding ramp on first seed to avoid overwhelming the user.
+    """
+    # Determine if this is the user's first seed (no tasks yet)
+    existing = supabase.table('tasks').select('id').eq('user_id', user_id).limit(1).execute()
+    first_seed = not bool(existing.data)
+
     # Clear existing tasks
     supabase.table('tasks').delete().eq('user_id', user_id).execute()
     filtered = _filter_rows_by_features(all_rows, features)
     resolved = _resolve_overlaps(filtered)
+    # Apply ramp if first seed
+    resolved = _apply_onboarding_ramp(resolved, today=datetime.now().date(), first_seed=first_seed)
     _insert_tasks_for_user(user_id, resolved)
 
 def seed_tasks_from_static_catalog_or_templates(user_id, features):
@@ -412,6 +556,8 @@ def seed_tasks_from_static_catalog_or_templates(user_id, features):
                 reader = csv.DictReader(f)
                 rows = [dict(r) for r in reader]
             seed_tasks_from_catalog_rows(user_id, features, rows)
+            # After catalog seed, backfill with templates for enabled features not covered by catalog
+            _backfill_from_templates(user_id, features)
             return True
     except Exception as e:
         print(f"Error seeding from static catalog: {e}")
@@ -456,6 +602,233 @@ def index():
         return redirect(url_for('dashboard'))
     # Not logged in: show welcome/landing page
     return render_template('index.html')
+
+@app.route('/api/debug/features')
+def api_debug_features():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user_id = session['user_id']
+    try:
+        res = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
+        return jsonify({'user_id': user_id, 'features': (res.data[0] if res.data else {})})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/tasks')
+def api_debug_tasks():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user_id = session['user_id']
+    try:
+        res = supabase.table('tasks').select('id,title,category,priority,next_due_date,seasonal').eq('user_id', user_id).order('title').execute()
+        return jsonify({'count': len(res.data or []), 'tasks': res.data or []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/seed_preview')
+def api_debug_seed_preview():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user_id = session['user_id']
+    try:
+        # Load features
+        features_row = {}
+        fres = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
+        if fres.data:
+            features_row = fres.data[0]
+        # Normalize to boolean flags only that are recognized
+        feature_flags = {k: bool(features_row.get(k, False)) for k in ALLOWED_FEATURE_KEYS}
+
+        # Load static catalog
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        static_catalog = os.path.join(root_dir, 'static', 'tasks_catalog.csv')
+        if not os.path.isfile(static_catalog):
+            return jsonify({'error': 'static/tasks_catalog.csv not found'}), 404
+        with open(static_catalog, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            rows = [dict(r) for r in reader]
+
+        # Filter and resolve overlaps using the same logic as seeding
+        filtered = _filter_rows_by_features(rows, feature_flags)
+        resolved = _resolve_overlaps(filtered)
+        titles = [r.get('title') for r in resolved]
+        return jsonify({
+            'user_id': user_id,
+            'features': feature_flags,
+            'catalog_rows': len(rows),
+            'matched_before_overlap': len(filtered),
+            'matched_after_overlap': len(resolved),
+            'titles': titles,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/home')
+def home():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = session['user_id']
+    features = {}
+    overview = None
+    upcoming_tasks = []
+    try:
+        res = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
+        if res.data:
+            features = res.data[0]
+    except Exception as e:
+        # Non-fatal: just show page without features if load fails
+        print(f"Error loading home_features: {e}")
+
+    # Compute lightweight overview metrics (reuse logic from dashboard simplified)
+    try:
+        t_res = supabase.table('tasks').select('*').eq('user_id', user_id).eq('archived', False).execute()
+        all_tasks = t_res.data or []
+        today = datetime.now().date()
+        overdue = []
+        upcoming = []
+        future = []
+        completed_recent = 0
+        # Completed in last 30 days via history
+        try:
+            hist = supabase.table('task_history').select('created_at').eq('user_id', user_id).eq('action', 'completed').order('created_at', desc=True).limit(500).execute()
+            cutoff = datetime.now() - timedelta(days=30)
+            for h in (hist.data or []):
+                try:
+                    ts = datetime.fromisoformat(h['created_at'].replace('Z','+00:00'))
+                    if ts >= cutoff:
+                        completed_recent += 1
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        for t in all_tasks:
+            nd = t.get('next_due_date')
+            if not nd:
+                future.append(t)
+                continue
+            try:
+                d = datetime.fromisoformat(nd).date()
+            except Exception:
+                future.append(t)
+                continue
+            if d < today:
+                overdue.append(t)
+            else:
+                # next 30 days count for upcoming list here, but preview tile uses 7 in dashboard; we will keep 30-day upcoming list length separately
+                if d <= today + timedelta(days=30):
+                    upcoming.append(t)
+                else:
+                    future.append(t)
+
+        # Due in next 7 days for tile parity
+        next_week = today + timedelta(days=7)
+        due_7 = 0
+        for t in all_tasks:
+            nd = t.get('next_due_date')
+            if not nd:
+                continue
+            try:
+                d = datetime.fromisoformat(nd).date()
+                if today <= d <= next_week:
+                    due_7 += 1
+            except Exception:
+                continue
+        overview = {
+            'total_active': len(all_tasks),
+            'overdue_count': len(overdue),
+            'due_7_days': due_7,
+            'completed_7_days': completed_recent,  # using 30 days if 7 unavailable; conservative preview
+        }
+        upcoming_tasks = upcoming
+    except Exception as e:
+        print(f"Error computing home overview: {e}")
+    # Banner photo now persisted in DB (home_features.banner_url)
+    banner_url = (features or {}).get('banner_url')
+    return render_template('home.html', features=features, banner_url=banner_url, overview=overview, upcoming_tasks=upcoming_tasks)
+
+@app.route('/home/photo', methods=['POST'])
+def upload_home_photo():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    file = request.files.get('photo')
+    if not file or file.filename == '':
+        flash('Please choose an image to upload')
+        return redirect(url_for('home'))
+    # Basic extension whitelist
+    allowed = {'.png', '.jpg', '.jpeg', '.webp'}
+    name = secure_filename(file.filename)
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in allowed:
+        flash('Unsupported image type. Please upload PNG, JPG, or WEBP.')
+        return redirect(url_for('home'))
+    # Upload to Supabase Storage (bucket must exist and be public-read)
+    try:
+        bucket = 'home-photos'
+        object_path = f"user_{session['user_id']}/banner{ext}"
+        # Upload file bytes
+        file.stream.seek(0)
+        data = file.read()
+        supabase.storage.from_(bucket).upload(path=object_path, file=data, file_options={
+            'content-type': file.mimetype or f"image/{ext.strip('.')}",
+            'x-upsert': 'true'
+        })
+        public_url = supabase.storage.from_(bucket).get_public_url(object_path)
+        # Persist URL in home_features
+        user_id = session['user_id']
+        existing = supabase.table('home_features').select('user_id').eq('user_id', user_id).execute()
+        if existing.data:
+            supabase.table('home_features').update({'banner_url': public_url, 'user_id': user_id}).eq('user_id', user_id).execute()
+        else:
+            supabase.table('home_features').insert({'user_id': user_id, 'banner_url': public_url}).execute()
+        flash('Photo updated!')
+    except Exception as e:
+        flash(f'Upload failed. Ensure bucket "home-photos" exists and is public. Error: {e}')
+    return redirect(url_for('home'))
+@app.route('/home/basics', methods=['POST'])
+def save_home_basics():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = session['user_id']
+    # Read and normalize inputs
+    address = (request.form.get('address') or '').strip() or None
+    year_built = (request.form.get('year_built') or '').strip() or None
+    def _to_int(val):
+        try:
+            return int(val) if val not in (None, '') else None
+        except Exception:
+            return None
+    def _to_decimal_str(val):
+        try:
+            v = str(val).strip()
+            if v == '':
+                return None
+            float(v)  # validate
+            return v
+        except Exception:
+            return None
+    square_feet = _to_int(request.form.get('square_feet'))
+    beds = _to_int(request.form.get('beds'))
+    baths = _to_decimal_str(request.form.get('baths'))
+
+    payload = {
+        'user_id': user_id,
+        'address': address,
+        'year_built': year_built,
+        'square_feet': square_feet,
+        'beds': beds,
+        'baths': baths,
+    }
+    try:
+        existing = supabase.table('home_features').select('id').eq('user_id', user_id).execute()
+        if existing.data:
+            supabase.table('home_features').update(payload).eq('user_id', user_id).execute()
+        else:
+            supabase.table('home_features').insert(payload).execute()
+        flash('Home basics saved')
+    except Exception as e:
+        flash(f'Failed to save basics: {e}')
+    return redirect(url_for('home'))
 
 @app.route('/tasks/<int:task_id>/history')
 def task_history(task_id):
@@ -562,6 +935,54 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
+@app.route('/catalog', methods=['GET', 'POST'])
+def catalog_admin():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            flash('Please choose a CSV file.')
+            return redirect(url_for('catalog_admin'))
+        try:
+            # Basic check: ensure it looks like CSV with EXPECTED_COLUMNS subset
+            headers, rows = _read_csv_upload(file)
+            missing = [c for c in ('task_key','title','feature_requirements') if c not in (headers or [])]
+            if missing:
+                flash(f'CSV is missing required columns: {", ".join(missing)}')
+                return redirect(url_for('catalog_admin'))
+            # Save to static/tasks_catalog.csv
+            target = os.path.join(app.root_path, 'static', 'tasks_catalog.csv')
+            with open(target, 'w', encoding='utf-8') as out:
+                writer = csv.DictWriter(out, fieldnames=headers)
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow(r)
+            flash(f'Catalog updated: {len(rows)} rows written.')
+            return redirect(url_for('catalog_admin'))
+        except Exception as e:
+            flash(f'Failed to update catalog: {e}')
+            return redirect(url_for('catalog_admin'))
+    # GET
+    return render_template('catalog.html')
+
+@app.route('/tasks/regenerate', methods=['POST'])
+def regenerate_tasks():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = session['user_id']
+    try:
+        fres = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
+        if not fres.data:
+            flash('No home features found. Complete the questionnaire first.')
+            return redirect(url_for('dashboard'))
+        features_row = fres.data[0]
+        feature_flags = {k: bool(features_row.get(k, False)) for k in ALLOWED_FEATURE_KEYS}
+        generate_tasks_for_user(user_id, feature_flags)
+        flash('Tasks regenerated from current catalog and features.')
+    except Exception as e:
+        flash(f'Failed to regenerate tasks: {e}')
+    return redirect(url_for('dashboard'))
 @app.route('/questionnaire', methods=['GET', 'POST'])
 def questionnaire():
     if 'user_id' not in session:
@@ -578,6 +999,36 @@ def questionnaire():
                 return default
             s = str(v).strip().lower()
             return s in ('on', 'true', '1', 'yes', 'y')
+
+        # Helper to normalize season values into ISO date strings for DB date columns
+        # Accepts values like '03' (month), 'march' (name), or an ISO date already
+        def _normalize_season_value(val):
+            if val is None:
+                return None
+            s = str(val).strip()
+            if not s:
+                return None
+            # If already a full ISO date, return a safe isoformat
+            try:
+                # Handle cases like '2024-03-01' or '2024-03-01T00:00:00'
+                d = datetime.fromisoformat(s.replace('Z', '+00:00'))
+                return d.date().isoformat()
+            except Exception:
+                pass
+            # Two-digit month like '03' or '10'
+            if len(s) == 2 and s.isdigit():
+                return f"2000-{s}-01"
+            # Month names
+            month_map = {
+                'january': '01', 'february': '02', 'march': '03', 'april': '04',
+                'may': '05', 'june': '06', 'july': '07', 'august': '08',
+                'september': '09', 'october': '10', 'november': '11', 'december': '12',
+            }
+            key = s.lower()
+            if key in month_map:
+                return f"2000-{month_map[key]}-01"
+            # As a last resort, leave null rather than storing invalid
+            return None
 
         # Map new wizard inputs (including radios) to existing boolean feature flags
         fireplace_type = (request.form.get('fireplace_type') or 'none').strip().lower()
@@ -634,6 +1085,10 @@ def questionnaire():
             'pet_other': _is_checked('pet_other'),
             'travel_often': _is_checked('travel_often'),
         }
+
+        # Normalize season fields to full ISO dates if the DB columns are of type DATE
+        for k in ('season_spring', 'season_summer', 'season_autumn', 'season_winter'):
+            extended[k] = _normalize_season_value(extended.get(k))
         
         try:
             # Check if features already exist for this user
@@ -717,6 +1172,43 @@ def dashboard():
         # Get all active tasks (not marked as completed in current cycle)
         tasks_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', False).eq('archived', False).order('next_due_date').execute()
         tasks = tasks_result.data or []
+        # Load baseline flags and feature booleans for conditional questions
+        features_row = {}
+        baseline_features = {}
+        # If user just completed/dismissed baseline in this session, hide CTA immediately
+        baseline_done_session = bool(session.pop('baseline_done', False))
+        try:
+            # Select only guaranteed columns to avoid exceptions that would hide saved flags
+            fres = (supabase
+                    .table('home_features')
+                    .select('baseline_checkup_dismissed,baseline_last_checked')
+                    .eq('user_id', user_id)
+                    .execute())
+            if fres.data:
+                features_row = fres.data[0]
+            # Optional: try to load feature booleans, but ignore errors if columns don't exist yet
+            try:
+                f2 = (supabase
+                      .table('home_features')
+                      .select('has_gutters,has_hvac,has_sump_pump,has_dishwasher,has_washer_dryer,has_fireplace,has_carpets')
+                      .eq('user_id', user_id)
+                      .execute())
+                if f2.data:
+                    r2 = f2.data[0]
+                    baseline_features = {
+                        'has_gutters': bool(r2.get('has_gutters', False)),
+                        'has_hvac': bool(r2.get('has_hvac', False)),
+                        'has_sump_pump': bool(r2.get('has_sump_pump', False)),
+                        'has_dishwasher': bool(r2.get('has_dishwasher', False)),
+                        'has_washer_dryer': bool(r2.get('has_washer_dryer', False)),
+                        'has_fireplace': bool(r2.get('has_fireplace', False)),
+                        'has_carpets': bool(r2.get('has_carpets', True)),
+                    }
+            except Exception:
+                pass
+        except Exception:
+            features_row = {}
+            baseline_features = {}
         
         # Get recently completed tasks
         completed_result = supabase.table('tasks').select('*').eq('user_id', user_id).eq('is_completed', True).eq('archived', False).order('last_completed', desc=True).limit(10).execute()
@@ -780,6 +1272,11 @@ def dashboard():
             urgent_task = overdue[0] if overdue else None
             urgent_task_overdue = bool(overdue)
 
+        # Derive a robust baseline_done flag
+        baseline_dismissed_flag = bool(features_row.get('baseline_checkup_dismissed'))
+        baseline_last_checked_flag = bool(features_row.get('baseline_last_checked'))
+        baseline_done = baseline_done_session or baseline_dismissed_flag or baseline_last_checked_flag
+
         return render_template('dashboard.html', 
                              overview=overview,
                              urgent_task=urgent_task,
@@ -787,7 +1284,11 @@ def dashboard():
                              overdue_tasks=overdue, 
                              upcoming_tasks=upcoming,
                              future_tasks=future,
-                             completed_tasks=completed_tasks)
+                             completed_tasks=completed_tasks,
+                             baseline_done=baseline_done,
+                             baseline_dismissed=baseline_dismissed_flag,
+                             baseline_last_checked=features_row.get('baseline_last_checked'),
+                             baseline_features=baseline_features)
                              
     except Exception as e:
         flash(f'Error loading dashboard: {str(e)}')
@@ -795,7 +1296,9 @@ def dashboard():
                              overdue_tasks=[], 
                              upcoming_tasks=[],
                              future_tasks=[],
-                             completed_tasks=[])
+                             completed_tasks=[],
+                             baseline_dismissed=True,
+                             baseline_last_checked=None)
 
 @app.route('/calendar')
 def calendar_view():
@@ -873,7 +1376,7 @@ def calendar_view():
     next_year = year if month < 12 else year + 1
     next_month = month + 1 if month < 12 else 1
 
-    return render_template('calendar.html',
+    return render_template('calendar.html', 
                            year=year,
                            month=month,
                            days=days,
@@ -884,6 +1387,158 @@ def calendar_view():
                            today_year=today.year,
                            today_month=today.month)
 
+# --- Baseline Checkup Endpoints ---
+@app.route('/baseline/dismiss', methods=['POST'])
+def baseline_dismiss():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user_id = session['user_id']
+    try:
+        # Update if exists, else insert (avoid ON CONFLICT constraint requirement)
+        existing = supabase.table('home_features').select('user_id').eq('user_id', user_id).execute()
+        payload = {
+            'baseline_checkup_dismissed': True,
+            'baseline_last_checked': datetime.utcnow().isoformat()+'Z'
+        }
+        if existing.data:
+            supabase.table('home_features').update(payload).eq('user_id', user_id).execute()
+        else:
+            payload['user_id'] = user_id
+            supabase.table('home_features').insert(payload).execute()
+        # Hide CTA immediately on next dashboard render
+        session['baseline_done'] = True
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def _adjust_tasks_from_baseline(user_id, answers):
+    """Apply simple adjustments: bring forward problem areas, defer pristine ones.
+    Prefer task_key-based matching when available, otherwise title substring matching.
+    """
+    today = datetime.utcnow().date()
+    try:
+        # Fetch tasks once
+        res = supabase.table('tasks').select('id,task_key,title,next_due_date,priority').eq('user_id', user_id).eq('archived', False).execute()
+        rows = res.data or []
+
+        def _title_matches(title, substrings):
+            t = (title or '').lower()
+            return any(s in t for s in substrings)
+
+        def _targets(task, key_list=None, substrings=None):
+            if key_list:
+                tk = (task.get('task_key') or '').strip()
+                if tk and tk in key_list:
+                    return True
+            if substrings:
+                return _title_matches(task.get('title'), substrings)
+            return False
+
+        updates = []
+        # --- Step 1: Exterior ---
+        if answers.get('siding_condition') == 'needs_repair':
+            for t in rows:
+                if _targets(t, key_list={'inspect_siding','exterior_painting','trim_siding_touchup'}, substrings=['siding','exterior paint','paint']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=7)).isoformat(), 'priority': 'high'}))
+        glc = answers.get('gutters_last_cleaned')
+        if glc in ('over_12m','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'gutters_clean','fall_gutter_check','check_gutters_drains'}, substrings=['gutter','downspout']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=7)).isoformat(), 'priority': 'high'}))
+
+        # --- Step 2: Systems ---
+        hvac = answers.get('hvac_filter_last')
+        if hvac in ('over_6m','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'hvac_filter','check_hvac_filters'}, substrings=['hvac filter','replace hvac filter','check hvac filters']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=7)).isoformat(), 'priority': 'medium'}))
+        wh = answers.get('water_heater_service')
+        if wh in ('over_3y','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'water_heater_flush','water_heater_pressure_valve'}, substrings=['water heater','flush hot water heater']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=10)).isoformat(), 'priority': 'medium'}))
+        sump = answers.get('sump_pump_tested')
+        if sump in ('not_recently','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'check_sump_pump_spring','winter_sump_pump_check'}, substrings=['sump pump']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=14)).isoformat(), 'priority': 'medium'}))
+
+        # --- Step 3: Appliances ---
+        dw = answers.get('dishwasher_filter_last')
+        if dw in ('over_6m','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'dishwasher_filter'}, substrings=['dishwasher filter']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=10)).isoformat()}))
+        dryer = answers.get('dryer_vent_last')
+        if dryer in ('over_1y','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'clean_dryer_vents'}, substrings=['dryer vent']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=10)).isoformat(), 'priority': 'medium'}))
+
+        # --- Step 4: Interior ---
+        carpet = answers.get('carpet_age')
+        if carpet == 'lt_1':
+            for t in rows:
+                if _targets(t, key_list={'clean_carpets','carpet_clean_pro','replace_carpet'}, substrings=['carpet']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=365)).isoformat()}))
+        elif carpet == 'gt_5':
+            for t in rows:
+                if _targets(t, key_list={'clean_carpets','carpet_clean_pro'}, substrings=['carpet']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=21)).isoformat()}))
+        fp = answers.get('fireplace_inspection')
+        if fp in ('not_past_year','not_sure'):
+            for t in rows:
+                if _targets(t, key_list={'chimney_fireplace_check','inspect_roof_pro','reseal_chimney_masonry'}, substrings=['chimney','fireplace']):
+                    updates.append((t['id'], {'next_due_date': (today + timedelta(days=21)).isoformat(), 'priority': 'medium'}))
+
+        for tid, payload in updates:
+            try:
+                supabase.table('tasks').update(payload).eq('user_id', user_id).eq('id', tid).execute()
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"Baseline adjust error: {e}")
+
+@app.route('/baseline/apply', methods=['POST'])
+def baseline_apply():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user_id = session['user_id']
+    try:
+        answers = {
+            # Step 1
+            'siding_condition': (request.form.get('siding_condition') or '').strip(),
+            'gutters_last_cleaned': (request.form.get('gutters_last_cleaned') or '').strip(),
+            # Step 2
+            'hvac_filter_last': (request.form.get('hvac_filter_last') or '').strip(),
+            'water_heater_service': (request.form.get('water_heater_service') or '').strip(),
+            'sump_pump_tested': (request.form.get('sump_pump_tested') or '').strip(),
+            # Step 3
+            'dishwasher_filter_last': (request.form.get('dishwasher_filter_last') or '').strip(),
+            'dryer_vent_last': (request.form.get('dryer_vent_last') or '').strip(),
+            # Step 4
+            'carpet_age': (request.form.get('carpet_age') or '').strip(),
+            'fireplace_inspection': (request.form.get('fireplace_inspection') or '').strip(),
+        }
+        # Enhance adjustments per new answers
+        _adjust_tasks_from_baseline(user_id, answers)
+        # Update if exists, else insert (avoid ON CONFLICT constraint requirement)
+        existing = supabase.table('home_features').select('user_id').eq('user_id', user_id).execute()
+        payload = {
+            'baseline_checkup_dismissed': True,
+            'baseline_last_checked': datetime.utcnow().isoformat()+'Z'
+        }
+        if existing.data:
+            supabase.table('home_features').update(payload).eq('user_id', user_id).execute()
+        else:
+            payload['user_id'] = user_id
+            supabase.table('home_features').insert(payload).execute()
+        # Hide CTA immediately on next dashboard render
+        session['baseline_done'] = True
+        flash('Baseline checkup applied to your tasks!')
+        return redirect(url_for('dashboard'))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 @app.route('/tasks')
 def task_list():
     if 'user_id' not in session:

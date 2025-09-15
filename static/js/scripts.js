@@ -117,7 +117,9 @@ function buildTaskCard(task, options = {}) {
         <div class="card-header ${headerClass}">
           <div class="title">${task.title}</div>
           ${task.description ? `<div class="desc">${task.description}</div>` : ''}
-          <div class="corner-dot"></div>
+          <a class="corner-dot" href="/task/${task.id}" title="View details">
+            <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+          </a>
         </div>
         <div class="card-body">
           <div class="info">  

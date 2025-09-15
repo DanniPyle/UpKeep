@@ -146,11 +146,45 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'travel_often') THEN
         ALTER TABLE public.home_features ADD COLUMN travel_often boolean NOT NULL DEFAULT false;
     END IF;
+    -- Home basics (editable on Home page)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'address') THEN
+        ALTER TABLE public.home_features ADD COLUMN address text;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'square_feet') THEN
+        ALTER TABLE public.home_features ADD COLUMN square_feet integer;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'beds') THEN
+        ALTER TABLE public.home_features ADD COLUMN beds integer;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'baths') THEN
+        ALTER TABLE public.home_features ADD COLUMN baths text; -- allow 2 or 2.5
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'banner_url') THEN
+        ALTER TABLE public.home_features ADD COLUMN banner_url text;
+    END IF;
+    -- Baseline checkup UX flags
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'baseline_checkup_dismissed') THEN
+        ALTER TABLE public.home_features ADD COLUMN baseline_checkup_dismissed boolean NOT NULL DEFAULT false;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'home_features' AND column_name = 'baseline_last_checked') THEN
+        ALTER TABLE public.home_features ADD COLUMN baseline_last_checked timestamptz;
+    END IF;
 END$$;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_category ON public.tasks(category);
 CREATE INDEX IF NOT EXISTS idx_tasks_next_due ON public.tasks(next_due_date);
+-- Add task_key column for precise task identification from catalog
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tasks' AND column_name = 'task_key'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN task_key text;
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_tasks_task_key ON public.tasks(task_key);
 -- Soft archive flag for tasks
 DO $$
 BEGIN

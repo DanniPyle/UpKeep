@@ -7,6 +7,22 @@
 
     
 
+    {% if not baseline_done %}
+    <div class="panel-card" id="baseline-cta" style="background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,248,232,0.7)); border: 1px solid rgba(230, 170, 80, 0.25);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <svg class="qa-icon" aria-hidden="true"><use href="#icon-star"></use></svg>
+        <div style="flex:1;">
+          <div class="panel-title" style="margin:0 0 4px 0;">Baseline Checkup</div>
+          <div class="muted">Great job setting up your home profile! Want to do a quick check-in to personalize your first tasks? This takes just a few minutes and helps us make sure your reminders are spot on.</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="baseline-start" class="btn">Yes, let’s do it</button>
+          <button id="baseline-skip" class="btn-ghost">Skip for now</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Quick Actions Row below hero -->
     <div class="quick-actions">
         <button id="add-custom-task" class="quick-btn">
@@ -17,13 +33,13 @@
             <svg class="qa-icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
             Calendar View
         </a>
-        <a id="home-details" class="quick-btn" href="{{ url_for('questionnaire') }}">
+        <a id="home-details" class="quick-btn" href="{{ url_for('home') }}">
             <svg class="qa-icon" aria-hidden="true"><use href="#icon-house"></use></svg>
             Home Details
         </a>
         <a id="task-list" class="quick-btn" href="{{ url_for('task_list') }}">
             <svg class="qa-icon" aria-hidden="true"><use href="#icon-task-list"></use></svg>
-            Full Task List
+            See All Tasks
         </a>
     </div>
 
@@ -127,7 +143,9 @@
                                 {% if urgent_task.description %}
                                 <div class="desc">{{ urgent_task.description }}</div>
                                 {% endif %}
-                                <div class="corner-dot"></div>
+                                <a class="corner-dot" href="{{ url_for('task_detail', task_id=urgent_task.id) }}" title="View details">
+                                  <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+                                </a>
                             </div>
                             <div class="card-body">
                                 <div class="info">
@@ -194,7 +212,9 @@
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
-                                <div class="corner-dot"></div>
+                                <a class="corner-dot" href="{{ url_for('task_detail', task_id=task.id) }}" title="View details">
+                                  <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+                                </a>
                             </div>
                             <div class="card-body">
                                 <div class="info">
@@ -256,7 +276,9 @@
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
-                                <div class="corner-dot"></div>
+                                <a class="corner-dot" href="{{ url_for('task_detail', task_id=task.id) }}" title="View details">
+                                  <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+                                </a>
                             </div>
                             <div class="card-body">
                                 <div class="info">
@@ -317,7 +339,9 @@
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
-                                <div class="corner-dot"></div>
+                                <a class="corner-dot" href="{{ url_for('task_detail', task_id=task.id) }}" title="View details">
+                                  <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+                                </a>
                             </div>
                             <div class="card-body">
                                 <div class="info">
@@ -420,6 +444,171 @@ function hideCreateTaskForm() {
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+<!-- Baseline Checkup Modal (Multi-step) -->
+<div id="baseline-modal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width:720px;">
+    <div class="modal-header">
+      <h3>Baseline Checkup</h3>
+      <button id="baseline-cancel" type="button">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="baseline-form" method="POST" action="{{ url_for('baseline_apply') }}">
+        <!-- Stepper indicator -->
+        <div class="muted" id="baseline-stepper" style="margin-bottom:10px;">Step <span id="baseline-step-num">1</span> of 5</div>
+
+        <!-- STEP 1: Exterior Check -->
+        <div class="baseline-step" data-step="1">
+          <h4>Step 1: Exterior Check</h4>
+          <div class="grid gap">
+            <div class="form-row">
+              <label for="siding_condition">Siding/Exterior Condition</label>
+              <div class="muted">How’s the outside of your home looking?</div>
+              <input type="hidden" id="siding_condition" name="siding_condition" />
+              <div class="btn-group" data-target="siding_condition">
+                <button type="button" class="btn option" data-value="">Great shape</button>
+                <button type="button" class="btn option" data-value="some_wear">Some wear</button>
+                <button type="button" class="btn option" data-value="needs_repair">Needs repair soon</button>
+              </div>
+            </div>
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_gutters) %}
+            <div class="form-row">
+              <label for="gutters_last_cleaned">Gutters</label>
+              <div class="muted">When were your gutters last cleaned?</div>
+              <input type="hidden" id="gutters_last_cleaned" name="gutters_last_cleaned" />
+              <div class="btn-group" data-target="gutters_last_cleaned">
+                <button type="button" class="btn option" data-value="within_3m">Within 3 months</button>
+                <button type="button" class="btn option" data-value="within_12m">3–12 months</button>
+                <button type="button" class="btn option" data-value="over_12m">Over a year</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- STEP 2: Systems Check -->
+        <div class="baseline-step" data-step="2" style="display:none;">
+          <h4>Step 2: Systems Check</h4>
+          <div class="grid gap">
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_hvac) %}
+            <div class="form-row">
+              <label for="hvac_filter_last">HVAC</label>
+              <div class="muted">Do you know when your HVAC filter was last changed?</div>
+              <input type="hidden" id="hvac_filter_last" name="hvac_filter_last" />
+              <div class="btn-group" data-target="hvac_filter_last">
+                <button type="button" class="btn option" data-value="within_3m">Within 3 months</button>
+                <button type="button" class="btn option" data-value="within_6m">3–6 months</button>
+                <button type="button" class="btn option" data-value="over_6m">Over 6 months</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% endif %}
+            <div class="form-row">
+              <label for="water_heater_service">Water Heater</label>
+              <div class="muted">Do you know when your water heater was last flushed or serviced?</div>
+              <input type="hidden" id="water_heater_service" name="water_heater_service" />
+              <div class="btn-group" data-target="water_heater_service">
+                <button type="button" class="btn option" data-value="within_1y">Within 1 year</button>
+                <button type="button" class="btn option" data-value="within_3y">1–3 years</button>
+                <button type="button" class="btn option" data-value="over_3y">Over 3 years</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_sump_pump) %}
+            <div class="form-row">
+              <label for="sump_pump_tested">Sump Pump</label>
+              <div class="muted">Has your sump pump been tested recently?</div>
+              <input type="hidden" id="sump_pump_tested" name="sump_pump_tested" />
+              <div class="btn-group" data-target="sump_pump_tested">
+                <button type="button" class="btn option" data-value="within_1y">Yes, in the past year</button>
+                <button type="button" class="btn option" data-value="not_recently">Not recently</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- STEP 3: Appliances Check -->
+        <div class="baseline-step" data-step="3" style="display:none;">
+          <h4>Step 3: Appliances Check</h4>
+          <div class="grid gap">
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_dishwasher) %}
+            <div class="form-row">
+              <label for="dishwasher_filter_last">Dishwasher</label>
+              <div class="muted">Do you know when the dishwasher filter was last cleaned?</div>
+              <input type="hidden" id="dishwasher_filter_last" name="dishwasher_filter_last" />
+              <div class="btn-group" data-target="dishwasher_filter_last">
+                <button type="button" class="btn option" data-value="within_6m">Within 6 months</button>
+                <button type="button" class="btn option" data-value="over_6m">Over 6 months</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% endif %}
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_washer_dryer) %}
+            <div class="form-row">
+              <label for="dryer_vent_last">Washer/Dryer</label>
+              <div class="muted">When was the dryer vent last cleaned?</div>
+              <input type="hidden" id="dryer_vent_last" name="dryer_vent_last" />
+              <div class="btn-group" data-target="dryer_vent_last">
+                <button type="button" class="btn option" data-value="within_1y">Within a year</button>
+                <button type="button" class="btn option" data-value="over_1y">Over a year</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- STEP 4: Interior Check -->
+        <div class="baseline-step" data-step="4" style="display:none;">
+          <h4>Step 4: Interior Check</h4>
+          <div class="grid gap">
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_carpets) %}
+            <div class="form-row">
+              <label for="carpet_age">Carpet</label>
+              <div class="muted">How old is your carpet?</div>
+              <input type="hidden" id="carpet_age" name="carpet_age" />
+              <div class="btn-group" data-target="carpet_age">
+                <button type="button" class="btn option" data-value="lt_1">Less than 1 year</button>
+                <button type="button" class="btn option" data-value="1_5">1–5 years</button>
+                <button type="button" class="btn option" data-value="gt_5">5+ years</button>
+              </div>
+            </div>
+            {% endif %}
+            {% if (not baseline_features) or (baseline_features and baseline_features.has_fireplace) %}
+            <div class="form-row">
+              <label for="fireplace_inspection">Fireplace</label>
+              <div class="muted">Has your fireplace/chimney been inspected recently?</div>
+              <input type="hidden" id="fireplace_inspection" name="fireplace_inspection" />
+              <div class="btn-group" data-target="fireplace_inspection">
+                <button type="button" class="btn option" data-value="within_1y">Within a year</button>
+                <button type="button" class="btn option" data-value="not_past_year">Not in the past year</button>
+                <button type="button" class="btn option" data-value="not_sure">Not sure</button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- STEP 5: Wrap-Up -->
+        <div class="baseline-step" data-step="5" style="display:none;">
+          <h4>Step 5: Wrap-Up</h4>
+          <p>Thanks! We’ve tailored your first reminders based on your home’s current condition. You’ll see some tasks scheduled right away, and others pushed back until they’re really needed. You can update this anytime in your settings.</p>
+        </div>
+      </form>
+      <div class="hint" style="margin-top:8px;">We’ll pull important items forward and let newer things wait a bit longer.</div>
+    </div>
+    <div class="modal-actions" style="display:flex; justify-content:space-between;">
+      <button id="baseline-back" type="button" class="btn-ghost">Back</button>
+      <div style="display:flex; gap:8px;">
+        <button id="baseline-next" type="button" class="btn">Next</button>
+        <button id="baseline-save" type="button" class="btn" style="display:none;">See My Tasks</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop"></div>
+</div>
 <!-- Modals copied from SPA (simplified for MPA) -->
 <div id="history-modal" class="modal" style="display:none;">
     <div class="modal-content">
@@ -506,6 +695,60 @@ function hideCreateTaskForm() {
 
   function open(el){ if(el){ el.style.display='flex'; document.body.style.overflow='hidden'; } }
   function close(el){ if(el){ el.style.display='none'; document.body.style.overflow=''; } }
+
+  // Baseline CTA wiring
+  const baselineCTA = document.getElementById('baseline-cta');
+  const baselineStart = document.getElementById('baseline-start');
+  const baselineSkip = document.getElementById('baseline-skip');
+  const baselineModal = document.getElementById('baseline-modal');
+  const baselineCancel = document.getElementById('baseline-cancel');
+  const baselineSave = document.getElementById('baseline-save');
+  const baselineForm = document.getElementById('baseline-form');
+  const baselineNext = document.getElementById('baseline-next');
+  const baselineBack = document.getElementById('baseline-back');
+  const baselineStepNum = document.getElementById('baseline-step-num');
+  let baselineStep = 1;
+
+  function showStep(step){
+    baselineStep = step;
+    const steps = $$('.baseline-step');
+    steps.forEach(s => { s.style.display = (parseInt(s.getAttribute('data-step')) === step) ? 'block' : 'none'; });
+    if(baselineStepNum) baselineStepNum.textContent = String(step);
+    // Controls
+    if(baselineBack) baselineBack.style.visibility = step === 1 ? 'hidden' : 'visible';
+    if(baselineNext) baselineNext.style.display = step < 5 ? 'inline-block' : 'none';
+    if(baselineSave) baselineSave.style.display = step === 5 ? 'inline-block' : 'none';
+  }
+
+  baselineStart?.addEventListener('click', () => open(baselineModal));
+  baselineCancel?.addEventListener('click', () => close(baselineModal));
+  baselineSave?.addEventListener('click', () => baselineForm?.submit());
+  baselineNext?.addEventListener('click', () => showStep(Math.min(5, baselineStep+1)));
+  baselineBack?.addEventListener('click', () => showStep(Math.max(1, baselineStep-1)));
+  // Initialize first step when opening
+  baselineStart?.addEventListener('click', () => showStep(1));
+  // Do not preselect any options; keep all buttons unselected by default
+
+  // Delegate clicks for option buttons to toggle active styling and set hidden inputs
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn.option');
+    if(!btn) return;
+    const group = btn.closest('.btn-group');
+    if(!group) return;
+    const target = group.getAttribute('data-target');
+    const input = target ? document.getElementById(target) : null;
+    if(!input) return;
+    e.preventDefault();
+    group.querySelectorAll('.btn.option').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    input.value = btn.getAttribute('data-value') || '';
+  });
+  baselineSkip?.addEventListener('click', async () => {
+    try {
+      const res = await fetch(`{{ url_for('baseline_dismiss') }}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if(res.ok){ baselineCTA?.remove(); }
+    } catch(_) {}
+  });
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('a,button');

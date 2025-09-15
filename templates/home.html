@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero" aria-label="Home details">
+  <div class="hero-text">
+    <h1 class="greeting">Your Home</h1>
+    <p class="sub">An overview of your home's details, systems, and health.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+
+<div class="panel-card" style="padding:0; overflow:hidden;">
+  {% if banner_url %}
+    <div class="home-banner" style="position:relative; height: 180px; background:#f3f4f6;">
+      <img src="{{ banner_url }}" alt="Home banner" style="width:100%; height:100%; object-fit:cover; display:block;">
+      <!-- Hover edit control -->
+      <button type="button" id="banner-edit-btn" class="banner-edit-btn" title="Change photo">
+        <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
+      </button>
+    </div>
+  {% else %}
+    <div style="height: 180px; display:flex; align-items:center; justify-content:center; background: #f3f4f6; color:#6b7280;">
+      <span>No photo yet</span>
+    </div>
+    <div style="padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <div>
+        <strong>Home Photo</strong>
+        <div class="muted" style="font-size:12px;">Upload a picture of your house for the banner.</div>
+      </div>
+      <form method="POST" action="{{ url_for('upload_home_photo') }}" enctype="multipart/form-data" style="display:flex; align-items:center; gap:8px;">
+        <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" />
+        <button type="submit" class="btn">Upload</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+
+<div class="grid cols-2 gap" style="margin-top:14px;">
+  <!-- Left: Basics -->
+  <div class="panel-card">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <h3 class="panel-title" style="margin:0;">Basics</h3>
+      <button id="edit-basics" type="button" class="btn-ghost">Edit</button>
+    </div>
+    {% if features and (features.year_built or features.square_feet or features.beds or features.baths or features.address) %}
+      {% if features.address %}
+        <div class="muted" style="margin:8px 0 10px;">{{ features.address }}</div>
+      {% endif %}
+      <div class="overview-tiles" style="margin-top:4px;">
+        {% if features.year_built %}
+          <div class="tile"><div class="label">Built</div><div class="value">{{ features.year_built }}</div></div>
+        {% endif %}
+        {% if features.beds %}
+          <div class="tile"><div class="value">{{ features.beds }}</div><div class="label">beds</div></div>
+        {% endif %}
+        {% if features.baths %}
+          <div class="tile"><div class="value">{{ features.baths }}</div><div class="label">baths</div></div>
+        {% endif %}
+        {% if features.square_feet %}
+          <div class="tile"><div class="value">{{ features.square_feet }}</div><div class="label">sqft</div></div>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="muted">Add your home's basics. Click Edit to get started.</p>
+    {% endif %}
+  </div>
+
+  <!-- Right: Home Health Overview -->
+  <div class="panel-card">
+    <h3 class="panel-title">Home Health Overview</h3>
+    {% if overview %}
+      <div class="overview-tiles">
+        <div class="tile overdue"><div class="count">{{ overview.overdue_count }}</div><div class="label">Overdue</div></div>
+        <div class="tile week"><div class="count">{{ overview.due_7_days }}</div><div class="label">Due 7 Days</div></div>
+        <div class="tile completed"><div class="count">{{ overview.completed_7_days }}</div><div class="label">Completed (30d)</div></div>
+        <div class="tile upcoming"><div class="count">{{ upcoming_tasks|length if upcoming_tasks else 0 }}</div><div class="label">Upcoming</div></div>
+      </div>
+    {% else %}
+      <p class="muted">We'll bring your Home Health metrics here next.</p>
+    {% endif %}
+  </div>
+
+  <!-- Full width below: Systems & Appliances -->
+  <div class="panel-card" style="grid-column: 1 / -1;">
+    <h3 class="panel-title">Systems & Appliances</h3>
+    {% set flags = [
+      ('HVAC', features.has_hvac),
+      ('Water Heater', features.has_water_heater),
+      ('Washer/Dryer', features.has_washer_dryer),
+      ('Dishwasher', features.has_dishwasher),
+      ('Refrigerator', features.has_refrigerator),
+      ('Sump Pump', features.has_sump_pump),
+      ('Water Softener', features.has_water_softener),
+      ('Irrigation', features.has_irrigation)
+    ] %}
+    {% set any_flag = false %}
+    <ul class="feature-list">
+      {% for label, on in flags %}
+        {% if on %}
+          {% set any_flag = true %}
+          <li><span class="badge">{{ label }}</span></li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+    {% if not any_flag %}
+      <p class="muted">No systems selected yet. <a href="{{ url_for('questionnaire') }}">Add systems</a></p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script id="home-features-json" type="application/json">{{ features|tojson }}</script>
+
+<div id="basics-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Home Basics</h3>
+      <button id="basics-cancel" type="button">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="basics-form" method="POST" action="{{ url_for('save_home_basics') }}">
+        <div class="form-row">
+          <label for="m-address">Address</label>
+          <input type="text" id="m-address" name="address" placeholder="123 Main St, City, ST 12345" />
+        </div>
+        <div class="grid cols-2 gap">
+          <div class="form-row">
+            <label for="m-year-built">Year built</label>
+            <input type="text" id="m-year-built" name="year_built" placeholder="e.g. 1965"/>
+          </div>
+          <div class="form-row">
+            <label for="m-square-feet">Square feet</label>
+            <input type="number" id="m-square-feet" name="square_feet" min="0" placeholder="e.g. 2105"/>
+          </div>
+          <div class="form-row">
+            <label for="m-beds">Bedrooms</label>
+            <input type="number" id="m-beds" name="beds" min="0" placeholder="e.g. 4"/>
+          </div>
+          <div class="form-row">
+            <label for="m-baths">Bathrooms</label>
+            <input type="text" id="m-baths" name="baths" placeholder="e.g. 2.5"/>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-actions">
+      <button id="basics-save" type="button">Save</button>
+    </div>
+  </div>
+  <div class="modal-backdrop"></div>
+</div>
+
+<script>
+(function(){
+  const $ = (s, r=document) => r.querySelector(s);
+  const featuresRaw = $('#home-features-json');
+  const features = featuresRaw ? JSON.parse(featuresRaw.textContent || '{}') : {};
+  const modal = $('#basics-modal');
+  const form = $('#basics-form');
+  const open = el => { el.style.display='flex'; document.body.style.overflow='hidden'; };
+  const close = el => { el.style.display='none'; document.body.style.overflow=''; };
+
+  // Prefill inputs
+  function prefill(){
+    $('#m-address').value = features.address || '';
+    $('#m-year-built').value = features.year_built || '';
+    $('#m-square-feet').value = features.square_feet || '';
+    $('#m-beds').value = features.beds || '';
+    $('#m-baths').value = features.baths || '';
+  }
+
+  $('#edit-basics')?.addEventListener('click', () => { prefill(); open(modal); });
+  $('#basics-cancel')?.addEventListener('click', () => close(modal));
+  $('#basics-save')?.addEventListener('click', () => { form.submit(); });
+})();
+
+(function(){
+  const $ = (s, r=document) => r.querySelector(s);
+  const editBtn = $('#banner-edit-btn');
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.id = 'banner-modal';
+  modal.style.display = 'none';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Update Home Photo</h3>
+        <button type="button" id="banner-cancel">Close</button>
+      </div>
+      <div class="modal-body">
+        <form id="banner-form" method="POST" action="{{ url_for('upload_home_photo') }}" enctype="multipart/form-data">
+          <div class="form-row">
+            <label for="banner-file">Choose image (PNG, JPG, WEBP)</label>
+            <input type="file" id="banner-file" name="photo" accept="image/png,image/jpeg,image/webp" required />
+          </div>
+        </form>
+      </div>
+      <div class="modal-actions">
+        <button id="banner-save" type="button">Upload</button>
+      </div>
+    </div>
+    <div class="modal-backdrop"></div>
+  `;
+  document.body.appendChild(modal);
+  const open = () => { modal.style.display='flex'; document.body.style.overflow='hidden'; };
+  const close = () => { modal.style.display='none'; document.body.style.overflow=''; };
+  editBtn?.addEventListener('click', open);
+  modal.querySelector('#banner-cancel')?.addEventListener('click', close);
+  // Submit on choose or Upload
+  modal.querySelector('#banner-file')?.addEventListener('change', () => {
+    const f = modal.querySelector('#banner-file');
+    if(f && f.files && f.files.length > 0){ modal.querySelector('#banner-form').submit(); }
+  });
+  modal.querySelector('#banner-save')?.addEventListener('click', () => {
+    const f = modal.querySelector('#banner-file');
+    if(!f || !f.files || f.files.length === 0){
+      f?.reportValidity();
+      return;
+    }
+    modal.querySelector('#banner-form').submit();
+  });
+})();
+</script>
+{% endblock %}

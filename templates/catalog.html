@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero" aria-label="Tasks Catalog">
+  <div class="hero-text">
+    <h1 class="greeting">Tasks Catalog</h1>
+    <p class="sub">Upload a CSV to replace <code>static/tasks_catalog.csv</code>.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+
+<div class="panel-card">
+  <h3 class="panel-title">Upload CSV</h3>
+  <form method="POST" action="{{ url_for('catalog_admin') }}" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+    <input type="file" name="file" accept="text/csv,.csv" required />
+    <button type="submit" class="btn">Upload</button>
+  </form>
+  <p class="muted" style="margin-top:8px;">Required columns: <code>task_key</code>, <code>title</code>, <code>feature_requirements</code>. See current file at <code>static/tasks_catalog.csv</code>.</p>
+</div>
+
+<div class="panel-card" style="margin-top:14px;">
+  <h3 class="panel-title">Regenerate Tasks</h3>
+  <p class="muted">Rebuild your tasks from the current catalog and your saved Home Details.</p>
+  <form method="POST" action="{{ url_for('regenerate_tasks') }}">
+    <button type="submit" class="btn">Regenerate Tasks</button>
+  </form>
+</div>
+{% endblock %}

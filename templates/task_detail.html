@@ -7,7 +7,7 @@
     <p class="sub">Full details, history, and references.</p>
   </div>
   <div class="hero-actions">
-    <a class="btn ghost" href="{{ url_for('tasks') if false else url_for('task_list') }}">Back to Task List</a>
+    <a class="btn ghost" href="{{ url_for('task_list') }}">Back to Task List</a>
     <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
 </section>
@@ -77,6 +77,8 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Provide task data for JS as JSON to avoid inline template expressions in JS -->
+<script id="task-json" type="application/json">{{ task|tojson }}</script>
 <!-- Reuse edit/history modals from dashboard for consistency -->
 <div id="history-modal" class="modal" style="display:none;">
   <div class="modal-content">
@@ -137,14 +139,15 @@
   </div>
   <div class="modal-backdrop"></div>
 </div>
-
+<!-- Hidden link to carry the task list URL without embedding Jinja in JS -->
+<a id="task-list-link" href="{{ url_for('task_list') }}" style="display:none;"></a>
 <script>
 (function(){
   const $ = (sel, root=document) => root.querySelector(sel);
   const historyModal = $('#history-modal');
   const historyBody = $('#history-body');
   const editModal = $('#edit-modal');
-  let currentEditTaskId = {{ task.id }};
+  let currentEditTaskId = null;
 
   function open(el){ if(el){ el.style.display='flex'; document.body.style.overflow='hidden'; } }
   function close(el){ if(el){ el.style.display='none'; document.body.style.overflow=''; } }
@@ -166,7 +169,9 @@
 
   // Populate edit form from task object
   (function init(){
-    const t = {{ task|tojson }};
+    const raw = document.getElementById('task-json');
+    const t = raw ? JSON.parse(raw.textContent) : {};
+    currentEditTaskId = t.id || null;
     $('#edit-title').value = t.title || '';
     $('#edit-description').value = t.description || '';
     $('#edit-frequency').value = t.frequency_days || '';
@@ -211,7 +216,7 @@
         method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
       });
       if(!res.ok){ throw new Error('Failed'); }
-      window.location.href = '{{ url_for('task_list') }}';
+      window.location.href = document.getElementById('task-list-link')?.href || '/';
     } catch(err){ alert('Failed to delete task.'); }
   });
 
