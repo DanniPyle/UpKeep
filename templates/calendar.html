@@ -35,7 +35,7 @@
           </div>
           {% if day['items'] %}
             <ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px;">
-              {% for task in day['items'] %}
+              {% for task in day['items'][:2] %}
                 <li>
                   <a href="#" class="pill {{ task.priority|lower if task.priority }}" style="font-size:12px; text-decoration:none;"
                      data-task-id="{{ task.id }}"
@@ -51,6 +51,11 @@
                 </li>
               {% endfor %}
             </ul>
+            {% if day['items']|length > 2 %}
+              <div style="margin-top:6px; text-align:center;">
+                <a class="btn-ghost" href="{{ url_for('task_list') }}?status=active&date={{ day.date.isoformat() }}" style="font-size:12px;">See more</a>
+              </div>
+            {% endif %}
           {% else %}
             <div style="color: var(--text-sec, #6b7280); font-size: 12px;">No tasks</div>
           {% endif %}
@@ -62,9 +67,12 @@
 
 <script>
 function openFromCalendar(el){
-  const title = el.dataset.title || '';
-  const q = encodeURIComponent(title);
-  window.location.href = `${window.location.origin}/dashboard?q=${q}`;
+  const date = (el.dataset.dueDate || '').slice(0,10);
+  if (!date) return;
+  const url = new URL(`${window.location.origin}/tasks`);
+  url.searchParams.set('status', 'active');
+  url.searchParams.set('date', date);
+  window.location.href = url.toString();
 }
 </script>
 {% endblock %}

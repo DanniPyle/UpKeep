@@ -59,11 +59,47 @@ function getRelativeDueLabel(dateStr) {
 
 // Shared card component used by both renderUrgent and renderTaskSection
 // options: { statusClass, dueLabel, isUrgent, taskType }
+function frequencyLabel(days) {
+    if (days == null || days === '') return '';
+    const d = Number(days);
+    if (!Number.isFinite(d) || d <= 0) return '';
+    const map = new Map([
+        [7, 'Weekly'],
+        [14, 'Every 2 Weeks'],
+        [21, 'Every 3 Weeks'],
+        [28, 'Every 4 Weeks'],
+        [30, 'Monthly'],
+        [60, 'Every 2 Months'],
+        [90, 'Quarterly'],
+        [120, 'Every 4 Months'],
+        [180, 'Every 6 Months'],
+        [270, 'Every 9 Months'],
+        [365, 'Yearly'],
+        [730, 'Every 2 Years'],
+        [1095, 'Every 3 Years'],
+        [1825, 'Every 5 Years'],
+    ]);
+    if (map.has(d)) return map.get(d);
+    if (d % 365 === 0) {
+        const n = d / 365;
+        return `Every ${n} Year${n !== 1 ? 's' : ''}`;
+    }
+    if (d % 30 === 0) {
+        const n = d / 30;
+        return n === 1 ? 'Monthly' : `Every ${n} Months`;
+    }
+    if (d % 7 === 0 && d <= 84) {
+        const n = d / 7;
+        return `Every ${n} Week${n !== 1 ? 's' : ''}`;
+    }
+    return `Every ${d} days`;
+}
+
 function buildTaskCard(task, options = {}) {
     const { statusClass = '', dueLabel = '', isUrgent = false, taskType = '' } = options;
     const priorityRaw = task.priority ? String(task.priority) : '';
     const priority = priorityRaw.toLowerCase();
-    const freq = task.frequency_days ? `${task.frequency_days} days` : '';
+    const freq = task.frequency_days ? frequencyLabel(task.frequency_days) : '';
     const headerClass = isUrgent ? 'urgent' : '';
 
     // Actions differ for completed vs other types
@@ -468,6 +504,14 @@ function setupEventListeners() {
             closeHistoryModal();
             closeEditModal();
         }
+    });
+
+    // Delegated handler for flash close buttons (server-rendered and JS-added)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.flash-close');
+        if (!btn) return;
+        const msg = btn.closest('.flash-message');
+        if (msg) msg.remove();
     });
 }
 
@@ -907,16 +951,22 @@ async function handleQuestionnaire(e) {
 }
 
 // Utility functions
-function showFlashMessage(message, type = 'success') {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `flash-message ${type}`;
-    messageDiv.textContent = message;
-    
-    flashMessages.appendChild(messageDiv);
-    
-    setTimeout(() => {
-        messageDiv.remove();
-    }, 5000);
+function showFlashMessage(message, type = 'success', { timeoutMs = 5000 } = {}) {
+    const wrap = document.getElementById('flash-messages');
+    if (!wrap) return;
+    const el = document.createElement('div');
+    el.className = `flash-message ${type}`;
+    el.innerHTML = `
+      <span class="flash-text"></span>
+      <button class="flash-close" aria-label="Close" type="button">&times;</button>
+    `;
+    el.querySelector('.flash-text').textContent = message;
+    wrap.appendChild(el);
+    if (timeoutMs && timeoutMs > 0) {
+        setTimeout(() => {
+            if (el && el.parentNode) el.remove();
+        }, timeoutMs);
+    }
 }
 
 function formatDate(dateString) {

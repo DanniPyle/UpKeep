@@ -1099,7 +1099,7 @@ button:active,
 .btn:active { transform: translateY(1px); }
 
 /* Utility variants */
-.btn-ghost { background: #ffffff; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 6px 16px rgba(210,153,83,0.14); color: #1f2937; }
+.btn-ghost { background: #ffffff; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 6px 16px rgba(210,153,83,0.14); color: #1f2937; text-align: center; text-decoration: none;}
 .btn-ghost:hover { background: #fff7ed; }
 
 .btn-success-soft { background: #e8f7ee; border: 1px solid rgba(16,185,129,0.35); color: #0b2b12; box-shadow: none; }

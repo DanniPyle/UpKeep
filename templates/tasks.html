@@ -47,7 +47,7 @@
               <div class="info">
                 <div class="info-item"><span class="label">Due date</span><span class="value">{{ (due_date or '-')|due_label }}</span></div>
                 <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ t.priority|lower if t.priority }}">{{ t.priority or '-' }}</span></span></div>
-                <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ t.frequency_days ~ ' days' if t.frequency_days else '-' }}</span></span></div>
+                <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ t.frequency_days|frequency_label }}</span></span></div>
               </div>
               <div class="actions">
                 {% if not t.is_completed and not t.archived %}

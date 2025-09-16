@@ -29,6 +29,10 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Runtime feature flag: whether the 'tasks.task_key' column exists in the DB.
+# If inserts fail due to schema cache or missing column, we'll disable it and retry without.
+TASK_KEY_SUPPORTED = True
+
 # Jinja filter: render due dates as Today / N days ago / YYYY-MM-DD
 @app.template_filter('due_label')
 def due_label(value):
@@ -55,6 +59,47 @@ def due_label(value):
         return d.isoformat()
     except Exception:
         return str(value)
+
+# Jinja filter: conversational frequency label from days
+@app.template_filter('frequency_label')
+def frequency_label(days):
+    try:
+        if days is None:
+            return '-'
+        d = int(days)
+    except Exception:
+        return str(days)
+    mapping = {
+        7: 'Weekly',
+        14: 'Every 2 Weeks',
+        21: 'Every 3 Weeks',
+        28: 'Every 4 Weeks',
+        30: 'Monthly',
+        60: 'Every 2 Months',
+        90: 'Quarterly',
+        120: 'Every 4 Months',
+        180: 'Every 6 Months',
+        270: 'Every 9 Months',
+        365: 'Yearly',
+        730: 'Every 2 Years',
+        1095: 'Every 3 Years',
+        1825: 'Every 5 Years',
+    }
+    if d in mapping:
+        return mapping[d]
+    # Heuristics: show common month/years when near multiples
+    if d % 365 == 0:
+        n = d // 365
+        return f"Every {n} Year{'s' if n != 1 else ''}"
+    if d % 30 == 0:
+        n = d // 30
+        if n == 1:
+            return 'Monthly'
+        return f"Every {n} Months"
+    if d % 7 == 0 and d <= 84:
+        n = d // 7
+        return f"Every {n} Week{'s' if n != 1 else ''}"
+    return f"Every {d} days"
 
 # JWT token decorator
 def token_required(f):
@@ -110,6 +155,13 @@ TASK_TEMPLATES = {
     'has_range_hood': [
         {'title': 'Degrease Range Hood Filter', 'description': 'Soak and clean the hood filter to improve airflow', 'frequency_days': 60},
     ],
+}
+
+# Accept common aliases/typos from catalog and map to canonical keys
+FEATURE_KEY_ALIASES = {
+    'has_disposal': 'has_garbage_disposal',
+    'has_washer': 'has_washer_dryer',
+    'has_smoke_dectectors': 'has_smoke_detectors',  # typo variant
 }
 
 # --- Catalog import/validation constants & helpers ---
@@ -206,9 +258,13 @@ def _parse_feature_requirements(s):
             continue
         key, value = part.split('=', 1)
         key = key.strip()
+        # Map alias if present
+        if key in FEATURE_KEY_ALIASES:
+            key = FEATURE_KEY_ALIASES[key]
         value = value.strip()
         if key not in ALLOWED_FEATURE_KEYS:
-            errors.append(f"unknown feature key '{key}'")
+            # Ignore unknown keys gracefully instead of dropping the row
+            # (keeps catalog resilient to minor naming differences)
             continue
         b = _parse_bool(value, default=None)
         if b is None:
@@ -367,6 +423,7 @@ def _resolve_overlaps(rows):
     return list(by_group.values())
 
 def _insert_tasks_for_user(user_id, rows):
+    global TASK_KEY_SUPPORTED
     to_insert = []
     today = datetime.now().date()
     for r in rows:
@@ -389,9 +446,8 @@ def _insert_tasks_for_user(user_id, rows):
 
         next_due = _compute_next_due_date(r, today)
 
-        to_insert.append({
+        payload = {
             'user_id': user_id,
-            'task_key': task_key,
             'title': title,
             'description': description,
             'frequency_days': frequency_days,
@@ -405,10 +461,39 @@ def _insert_tasks_for_user(user_id, rows):
             'season_code': ((r.get('season_code') or '').strip().lower() or None),
             'season_anchor_month': _parse_int(r.get('season_anchor_month'), default=None),
             'season_anchor_day': _parse_int(r.get('season_anchor_day'), default=None),
-        })
+        }
+        # Only include task_key if supported (may be disabled if schema missing or cache stale)
+        if TASK_KEY_SUPPORTED and task_key:
+            payload['task_key'] = task_key
+        to_insert.append(payload)
 
     if to_insert:
-        supabase.table('tasks').insert(to_insert).execute()
+        # Insert in batches to avoid payload/row limits
+        batch_size = 50
+        for i in range(0, len(to_insert), batch_size):
+            batch = to_insert[i:i+batch_size]
+            try:
+                supabase.table('tasks').insert(batch).execute()
+            except Exception as e:
+                msg = str(e)
+                print(f"Error inserting batch {i//batch_size+1}: {msg}")
+                # If the failure is due to missing/uncached task_key column, strip it and retry once
+                if 'task_key' in msg.lower():
+                    TASK_KEY_SUPPORTED = False
+                    sanitized = []
+                    for row in batch:
+                        if 'task_key' in row:
+                            row = dict(row)
+                            row.pop('task_key', None)
+                        sanitized.append(row)
+                    try:
+                        supabase.table('tasks').insert(sanitized).execute()
+                        print(f"Retried batch {i//batch_size+1} without task_key and succeeded.")
+                        continue
+                    except Exception as e2:
+                        print(f"Retry without task_key failed for batch {i//batch_size+1}: {e2}")
+                # Continue with remaining batches to salvage progress
+                continue
 
 def _apply_onboarding_ramp(rows, today=None, first_seed=False):
     """Mutate CSV row dicts in-place to add start_offset_days for non-critical tasks.
@@ -538,8 +623,33 @@ def seed_tasks_from_catalog_rows(user_id, features, all_rows):
     existing = supabase.table('tasks').select('id').eq('user_id', user_id).limit(1).execute()
     first_seed = not bool(existing.data)
 
-    # Clear existing tasks
-    supabase.table('tasks').delete().eq('user_id', user_id).execute()
+    # Clear only upcoming/future active tasks (preserve completed and overdue)
+    today_iso = datetime.now().date().isoformat()
+    # Delete active, non-archived tasks due today or later
+    try:
+        supabase.table('tasks').delete() \
+            .eq('user_id', user_id) \
+            .eq('archived', False) \
+            .eq('is_completed', False) \
+            .gte('next_due_date', today_iso) \
+            .execute()
+        # Also delete undated active tasks (no next_due_date)
+        supabase.table('tasks').delete() \
+            .eq('user_id', user_id) \
+            .eq('archived', False) \
+            .eq('is_completed', False) \
+            .is_('next_due_date', None) \
+            .execute()
+    except Exception as e:
+        print(f"Selective clear failed, falling back to full clear of active tasks: {e}")
+        try:
+            supabase.table('tasks').delete() \
+                .eq('user_id', user_id) \
+                .eq('archived', False) \
+                .eq('is_completed', False) \
+                .execute()
+        except Exception as e2:
+            print(f"Fallback clear failed: {e2}")
     filtered = _filter_rows_by_features(all_rows, features)
     resolved = _resolve_overlaps(filtered)
     # Apply ramp if first seed
@@ -599,6 +709,78 @@ def reactivate_due_tasks(user_id):
 @app.route('/')
 def index():
     if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    # Not logged in: show welcome/landing page
+    return render_template('index.html')
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = session['user_id']
+    try:
+        # Load current user
+        ures = supabase.table('users').select('*').eq('id', user_id).execute()
+        if not ures.data:
+            flash('User not found')
+            return redirect(url_for('dashboard'))
+        user = ures.data[0]
+
+        if request.method == 'POST':
+            name = (request.form.get('username') or '').strip()
+            email = (request.form.get('email') or '').strip()
+            current_pw = request.form.get('current_password') or ''
+            new_pw = request.form.get('new_password') or ''
+            confirm_pw = request.form.get('confirm_password') or ''
+
+            updates = {}
+
+            # Update username
+            if name and name != user.get('username'):
+                # Ensure unique
+                exists = supabase.table('users').select('id').eq('username', name).neq('id', user_id).execute()
+                if exists.data:
+                    flash('That username is already taken')
+                    return redirect(url_for('settings'))
+                updates['username'] = name
+
+            # Update email
+            if email and email != user.get('email'):
+                exists = supabase.table('users').select('id').eq('email', email).neq('id', user_id).execute()
+                if exists.data:
+                    flash('That email is already in use')
+                    return redirect(url_for('settings'))
+                updates['email'] = email
+
+            # Update password
+            if any([current_pw, new_pw, confirm_pw]):
+                if not (current_pw and new_pw and confirm_pw):
+                    flash('To change your password, fill out all password fields')
+                    return redirect(url_for('settings'))
+                if new_pw != confirm_pw:
+                    flash('New password and confirmation do not match')
+                    return redirect(url_for('settings'))
+                # Verify current password
+                if not check_password_hash(user.get('password_hash', ''), current_pw):
+                    flash('Current password is incorrect')
+                    return redirect(url_for('settings'))
+                updates['password_hash'] = generate_password_hash(new_pw)
+
+            if updates:
+                supabase.table('users').update(updates).eq('id', user_id).execute()
+                # Update session username if changed
+                if 'username' in updates:
+                    session['username'] = updates['username']
+                flash('Settings updated')
+                return redirect(url_for('settings'))
+
+            flash('No changes to update')
+            return redirect(url_for('settings'))
+
+        # GET request: render settings page
+        return render_template('settings.html', user=user)
+    except Exception as e:
+        flash(f'Error loading settings: {str(e)}')
         return redirect(url_for('dashboard'))
     # Not logged in: show welcome/landing page
     return render_template('index.html')
@@ -1547,6 +1729,9 @@ def task_list():
     user_id = session['user_id']
     q = (request.args.get('q') or '').strip().lower()
     sort = (request.args.get('sort') or 'due').strip().lower()
+    status = (request.args.get('status') or 'all').strip().lower()  # all | active | completed | archived
+    due_filter = (request.args.get('due') or '').strip().lower()    # '' | upcoming30 | future
+    date_filter = (request.args.get('date') or '').strip()          # YYYY-MM-DD
     show_archived = (str(request.args.get('show_archived') or 'false').lower() in ('1','true','yes','y'))
     try:
         # Fetch tasks; include archived if requested
@@ -1554,14 +1739,80 @@ def task_list():
               .table('tasks')
               .select('*')
               .eq('user_id', user_id))
-        if not show_archived:
-            qb = qb.eq('archived', False)
+        # Always fetch archived too so we can filter locally for counts; we'll filter display below
         res = qb.execute()
         tasks = res.data or []
+        # Compute counts for visibility
+        active_tasks = [t for t in tasks if not t.get('archived') and not t.get('is_completed')]
+        completed_tasks = [t for t in tasks if not t.get('archived') and t.get('is_completed')]
+        archived_tasks = [t for t in tasks if t.get('archived')]
+        counts = {
+            'active': len(active_tasks),
+            'completed': len(completed_tasks),
+            'archived': len(archived_tasks),
+            'total': len(tasks)
+        }
+        # Apply status filter for display
+        if status == 'active':
+            tasks = active_tasks
+        elif status == 'completed':
+            tasks = completed_tasks
+        elif status == 'archived':
+            tasks = archived_tasks
+        else:  # all (default): show active + completed, optionally include archived if checkbox set
+            tasks = active_tasks + completed_tasks
+            if show_archived:
+                tasks += archived_tasks
         if q:
             def _match(t):
                 return q in (t.get('title','').lower()) or q in (t.get('description','').lower())
             tasks = [t for t in tasks if _match(t)]
+        # Apply optional exact date filter first (restricts to a single day)
+        if date_filter:
+            try:
+                target = datetime.fromisoformat(date_filter).date()
+                def _is_on_date(t):
+                    try:
+                        d = t.get('next_due_date')
+                        if not d:
+                            return False
+                        dd = datetime.fromisoformat(d).date()
+                        return dd == target
+                    except Exception:
+                        return False
+                tasks = [t for t in tasks if _is_on_date(t)]
+            except Exception:
+                # Ignore invalid date
+                pass
+
+        # Apply optional due window filter
+        if due_filter in ('upcoming30', 'future'):
+            from datetime import date as _date
+            today = _date.today()
+            horizon = today + timedelta(days=30)
+            def _in_upcoming_30(t):
+                try:
+                    d = t.get('next_due_date')
+                    if not d:
+                        return False
+                    dd = datetime.fromisoformat(d).date()
+                    return dd >= today and dd <= horizon
+                except Exception:
+                    return False
+            def _in_future(t):
+                try:
+                    d = t.get('next_due_date')
+                    if not d:
+                        return False
+                    dd = datetime.fromisoformat(d).date()
+                    return dd > horizon
+                except Exception:
+                    return False
+            if due_filter == 'upcoming30':
+                tasks = [t for t in tasks if _in_upcoming_30(t)]
+            else:
+                tasks = [t for t in tasks if _in_future(t)]
+
         # Apply sort
         if sort == 'title':
             tasks.sort(key=lambda t: (t.get('title') or '').lower())
@@ -1581,8 +1832,8 @@ def task_list():
     except Exception as e:
         flash(f'Error loading tasks: {str(e)}')
         tasks = []
-
-    return render_template('tasks.html', tasks=tasks, sort=sort, show_archived=show_archived)
+    
+    return render_template('tasks.html', tasks=tasks, sort=sort, show_archived=show_archived, status=status, counts=counts)
 
 @app.route('/task/<int:task_id>')
 def task_detail(task_id):

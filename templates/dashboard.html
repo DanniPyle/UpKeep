@@ -151,7 +151,7 @@
                                 <div class="info">
                                     <div class="info-item"><span class="label">Due date</span><span class="value">{{ (due_date or '-')|due_label }}</span></div>
                                     <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ urgent_task.priority|lower if urgent_task.priority }}">{{ urgent_task.priority or '-' }}</span></span></div>
-                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ urgent_task.frequency_days ~ ' days' if urgent_task.frequency_days else '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ urgent_task.frequency_days|frequency_label }}</span></span></div>
                                 </div>
                                 <div class="actions">
                                     <a class="btn primary" href="{{ url_for('complete_task', task_id=urgent_task.id) }}">
@@ -220,7 +220,7 @@
                                 <div class="info">
                                     <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
                                     <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
-                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days|frequency_label }}</span></span></div>
                                 </div>
                                 <div class="actions">
                                     <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">
@@ -260,8 +260,8 @@
                 <h3 class="panel-title">Upcoming Tasks (Next 30 Days)</h3>
                 <div id="upcoming-tasks">
                     {% if upcoming_tasks %}
-                        <div class="task-card-list">
-                        {% for task in upcoming_tasks %}
+                        <div class="task-card-list clamped-list clamp-6 {% if upcoming_tasks|length > 6 %}has-more{% endif %}">
+                        {% for task in upcoming_tasks[:6] %}
                         <div class="task-card upcoming">
                             <div class="card-header">
                                 <div class="title">
@@ -284,7 +284,7 @@
                                 <div class="info">
                                     <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
                                     <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
-                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days|frequency_label }}</span></span></div>
                                 </div>
                                 <div class="actions">
                                     <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">
@@ -311,6 +311,11 @@
                         </div>
                         {% endfor %}
                         </div>
+                        {% if upcoming_tasks|length > 6 %}
+                        <div class="list-more">
+                          <a class="btn ghost" href="{{ url_for('task_list', status='active', due='upcoming30') }}">See more</a>
+                        </div>
+                        {% endif %}
                     {% else %}
                         <p>No upcoming tasks in the next 30 days.</p>
                     {% endif %}
@@ -323,8 +328,8 @@
                 <h3 class="panel-title">Future Tasks</h3>
                 <div id="future-tasks">
                     {% if future_tasks %}
-                        <div class="task-card-list">
-                        {% for task in future_tasks %}
+                        <div class="task-card-list clamped-list clamp-4 {% if future_tasks|length > 4 %}has-more{% endif %}">
+                        {% for task in future_tasks[:4] %}
                         <div class="task-card future">
                             <div class="card-header">
                                 <div class="title">
@@ -347,7 +352,7 @@
                                 <div class="info">
                                     <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
                                     <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
-                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days|frequency_label }}</span></span></div>
                                 </div>
                                 <div class="actions">
                                     <a class="complete-btn" href="{{ url_for('complete_task', task_id=task.id) }}">
@@ -374,6 +379,11 @@
                         </div>
                         {% endfor %}
                         </div>
+                        {% if future_tasks|length > 4 %}
+                        <div class="list-more">
+                          <a class="btn ghost" href="{{ url_for('task_list', status='active', due='future') }}">See more</a>
+                        </div>
+                        {% endif %}
                     {% else %}
                         <p>No future tasks yet.</p>
                     {% endif %}
@@ -386,8 +396,8 @@
                 <h3 class="panel-title">Recently Completed</h3>
                 <div id="completed-tasks">
                     {% if completed_tasks %}
-                        <div class="task-card-list">
-                        {% for task in completed_tasks %}
+                        <div class="task-card-list clamped-list clamp-4">
+                        {% for task in completed_tasks[:4] %}
                         <div class="task-card completed">
                             <div class="card-header">
                                 <div class="title">
@@ -402,13 +412,15 @@
                                 {% if task.description %}
                                 <div class="desc">{{ task.description }}</div>
                                 {% endif %}
-                                <div class="corner-dot"></div>
+                                <a class="corner-dot" href="{{ url_for('task_detail', task_id=task.id) }}" title="View details">
+                                  <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+                                </a>
                             </div>
                             <div class="card-body">
                                 <div class="info">
                                     <div class="info-item"><span class="label">Completed</span><span class="value">{{ task.last_completed or '-' }}</span></div>
                                     <div class="info-item"><span class="label">Next due</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
-                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+                                    <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days|frequency_label }}</span></span></div>
                                 </div>
                                 <div class="actions">
                                     <a class="reset-btn" href="{{ url_for('reset_task', task_id=task.id) }}">Reset</a>
@@ -421,6 +433,11 @@
                         </div>
                         {% endfor %}
                         </div>
+                        {% if completed_tasks|length > 4 %}
+                        <div class="list-more">
+                          <a class="btn ghost" href="{{ url_for('task_list', status='completed') }}">See more</a>
+                        </div>
+                        {% endif %}
                     {% else %}
                         <p>No recently completed tasks.</p>
                     {% endif %}

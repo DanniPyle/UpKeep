@@ -6,7 +6,7 @@
     <p class="sub">Helping you take care of your home, one step at a time</p>
   </div>
   <div class="hero-actions">
-    <form class="hero-search" id="hero-search-form" role="search" method="get" action="{{ url_for('dashboard') }}">
+    <form class="hero-search" id="hero-search-form" role="search" method="get" action="{{ url_for('task_list') }}">
       <input id="hero-search" name="q" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" value="{{ request.args.get('q', '') }}" />
     </form>
     <div class="user-menu-wrap">
@@ -14,6 +14,7 @@
         <span id="avatar-initial">{{ (session.username[0]|upper) if session.username else 'U' }}</span>
       </button>
       <div id="user-menu" class="user-menu" role="menu">
+        <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('settings') }}">Settings</a>
         <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('questionnaire') }}">Update Home Features</a>
         <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('logout') }}">Logout</a>
       </div>

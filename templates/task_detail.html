@@ -25,7 +25,7 @@
         <div class="info">
           <div class="info-item"><span class="label">Due date</span><span class="value">{{ (task.next_due_date or '-')|due_label }}</span></div>
           <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ task.priority|lower if task.priority }}">{{ task.priority or '-' }}</span></span></div>
-          <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days ~ ' days' if task.frequency_days else '-' }}</span></span></div>
+          <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ task.frequency_days|frequency_label }}</span></span></div>
           <div class="info-item"><span class="label">Category</span><span class="value">{{ task.category or '-' }}</span></div>
           <div class="info-item"><span class="label">Status</span><span class="value">{{ 'Archived' if task.archived else ('Completed' if task.is_completed else 'Active') }}</span></div>
         </div>
