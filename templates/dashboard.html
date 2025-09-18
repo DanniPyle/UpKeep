@@ -191,13 +191,13 @@
     <div id="tasks-container">
         {% set overdue_count = overdue_tasks|length %}
         {% if overdue_count > 1 %}
-        <div class="task-section">
+        <div class="task-section span-all">
             <div class="panel-card">
                 <h3 class="panel-title">Overdue Tasks</h3>
                 <div id="overdue-tasks">
                     {% if overdue_tasks %}
-                        <div class="task-card-list">
-                        {% for task in overdue_tasks %}
+                        <div class="task-card-list clamped-list clamp-6 {% if overdue_tasks|length > 6 %}has-more{% endif %}">
+                        {% for task in overdue_tasks[:6] %}
                         <div class="task-card overdue">
                             <div class="card-header">
                                 <div class="title">
@@ -247,6 +247,11 @@
                         </div>
                         {% endfor %}
                         </div>
+                        {% if overdue_tasks|length > 6 %}
+                        <div class="list-more">
+                          <a class="btn ghost" href="{{ url_for('task_list', status='active', due='overdue') }}">See more</a>
+                        </div>
+                        {% endif %}
                     {% else %}
                         <p>No overdue tasks 🎉</p>
                     {% endif %}

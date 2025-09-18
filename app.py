@@ -1730,7 +1730,7 @@ def task_list():
     q = (request.args.get('q') or '').strip().lower()
     sort = (request.args.get('sort') or 'due').strip().lower()
     status = (request.args.get('status') or 'all').strip().lower()  # all | active | completed | archived
-    due_filter = (request.args.get('due') or '').strip().lower()    # '' | upcoming30 | future
+    due_filter = (request.args.get('due') or '').strip().lower()    # '' | overdue | upcoming30 | future
     date_filter = (request.args.get('date') or '').strip()          # YYYY-MM-DD
     show_archived = (str(request.args.get('show_archived') or 'false').lower() in ('1','true','yes','y'))
     try:
@@ -1786,10 +1786,19 @@ def task_list():
                 pass
 
         # Apply optional due window filter
-        if due_filter in ('upcoming30', 'future'):
+        if due_filter in ('overdue', 'upcoming30', 'future'):
             from datetime import date as _date
             today = _date.today()
             horizon = today + timedelta(days=30)
+            def _in_overdue(t):
+                try:
+                    d = t.get('next_due_date')
+                    if not d:
+                        return False
+                    dd = datetime.fromisoformat(d).date()
+                    return dd < today
+                except Exception:
+                    return False
             def _in_upcoming_30(t):
                 try:
                     d = t.get('next_due_date')
@@ -1808,7 +1817,9 @@ def task_list():
                     return dd > horizon
                 except Exception:
                     return False
-            if due_filter == 'upcoming30':
+            if due_filter == 'overdue':
+                tasks = [t for t in tasks if _in_overdue(t)]
+            elif due_filter == 'upcoming30':
                 tasks = [t for t in tasks if _in_upcoming_30(t)]
             else:
                 tasks = [t for t in tasks if _in_future(t)]
@@ -1829,6 +1840,35 @@ def task_list():
                 except Exception:
                     return far
             tasks.sort(key=lambda t: (_due(t), (t.get('title') or '').lower()))
+
+        # Annotate tasks with a display_state for accent styling on the All Tasks page
+        try:
+            from datetime import date as _date
+            today = _date.today()
+            horizon = today + timedelta(days=30)
+            for t in tasks:
+                if t.get('archived'):
+                    t['display_state'] = ''
+                    continue
+                if t.get('is_completed'):
+                    t['display_state'] = 'completed'
+                    continue
+                d = t.get('next_due_date')
+                try:
+                    dd = datetime.fromisoformat(d).date() if d else None
+                except Exception:
+                    dd = None
+                if dd is None:
+                    t['display_state'] = 'future'
+                elif dd < today:
+                    t['display_state'] = 'overdue'
+                elif today <= dd <= horizon:
+                    t['display_state'] = 'upcoming'
+                else:
+                    t['display_state'] = 'future'
+        except Exception:
+            # Non-fatal: accents just won't render if this fails
+            pass
     except Exception as e:
         flash(f'Error loading tasks: {str(e)}')
         tasks = []

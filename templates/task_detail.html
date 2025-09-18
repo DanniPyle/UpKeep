@@ -1,16 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero" aria-label="Task detail">
-  <div class="hero-text">
-    <h1 class="greeting">{{ task.title }}</h1>
-    <p class="sub">Full details, history, and references.</p>
-  </div>
-  <div class="hero-actions">
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 4px 0 10px 0;">
+  <h1 style="font-size:28px; line-height:1.2; letter-spacing:-0.02em; margin:0; color: var(--raisin-black);">{{ task.title }}</h1>
+  <div style="display:flex; gap:8px; align-items:center;">
     <a class="btn ghost" href="{{ url_for('task_list') }}">Back to Task List</a>
     <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
-</section>
+</div>
 
 <div class="grid cols-2 gap">
   <div class="panel-card">

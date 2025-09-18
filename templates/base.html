@@ -13,6 +13,7 @@
 <body>
     {# Inline SVG symbol sprite for reusable icons (must be defined before any <use>) #}
     {% include 'partials/icons.html' %}
+    {% include 'partials/app_header.html' %}
     <div class="container">
         {% block header %}{% endblock %}
 
@@ -32,9 +33,9 @@
         <!-- JS-driven flash messages container -->
         <div id="flash-messages" class="flash-messages" aria-live="polite" aria-atomic="true"></div>
 
-        {% include 'partials/app_header.html' %}
         {% block content %}{% endblock %}
     </div>
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

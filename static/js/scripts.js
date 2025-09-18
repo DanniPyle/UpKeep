@@ -15,7 +15,8 @@ const flashMessages = document.getElementById('flash-messages');
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
-    const isMpa = !document.getElementById('auth-section') && !!document.getElementById('dashboard-section');
+    // Treat any server-rendered page (no #auth-section) as MPA
+    const isMpa = !document.getElementById('auth-section');
     if (isMpa) {
         // In MPA we rely on server session and server-rendered pages.
         // Do not run SPA auth flows; only attach safe UI listeners.
@@ -329,7 +330,8 @@ function closeHistoryModal() {
 }
 
 function setupEventListeners() {
-    const isMpa = !document.getElementById('auth-section') && !!document.getElementById('dashboard-section');
+    // Treat any server-rendered page (no #auth-section) as MPA
+    const isMpa = !document.getElementById('auth-section');
     // Auth tabs (SPA only)
     const loginTab = document.getElementById('login-tab');
     const registerTab = document.getElementById('register-tab');

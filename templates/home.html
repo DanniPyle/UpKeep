@@ -1,15 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero" aria-label="Home details">
-  <div class="hero-text">
-    <h1 class="greeting">Your Home</h1>
-    <p class="sub">An overview of your home's details, systems, and health.</p>
-  </div>
-  <div class="hero-actions">
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 4px 0 10px 0;">
+  <h1 style="font-size:28px; line-height:1.2; letter-spacing:-0.02em; margin:0; color: var(--raisin-black);">Your Home</h1>
+  <div style="display:flex; gap:8px; align-items:center;">
     <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
-</section>
+</div>
 
 <div class="panel-card" style="padding:0; overflow:hidden;">
   {% if banner_url %}

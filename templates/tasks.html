@@ -1,15 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero" aria-label="All Tasks">
-  <div class="hero-text">
-    <h1 class="greeting">Task List</h1>
-    <p class="sub">Browse and manage all of your tasks.</p>
-  </div>
-  <div class="hero-actions">
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 4px 0 10px 0;">
+  <h1 style="font-size:28px; line-height:1.2; letter-spacing:-0.02em; margin:0; color: var(--raisin-black);">Task List</h1>
+  <div style="display:flex; gap:8px; align-items:center;">
     <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
-</section>
+</div>
 
 <div class="task-section span-all" aria-label="All tasks">
   <div class="panel-card">
@@ -35,7 +32,7 @@
       <div class="task-card-list">
         {% for t in tasks %}
           {% set due_date = t.next_due_date if t.next_due_date is defined else t['next_due_date'] %}
-          <div class="task-card {{ 'muted' if t.archived }}">
+          <div class="task-card {{ t.display_state }} {{ 'muted' if t.archived }}">
             <div class="card-header">
               <div class="title">{{ t.title }}</div>
               {% if t.description %}<div class="desc">{{ t.description }}</div>{% endif %}

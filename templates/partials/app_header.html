@@ -1,24 +1,32 @@
 <!-- App Header (shared across pages) -->
 {% if session.user_id %}
 <section class="hero">
-  <div class="hero-text">
-    <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">{{ session.username or 'Friend' }}</span></h1>
-    <p class="sub">Helping you take care of your home, one step at a time</p>
-  </div>
-  <div class="hero-actions">
-    <form class="hero-search" id="hero-search-form" role="search" method="get" action="{{ url_for('task_list') }}">
-      <input id="hero-search" name="q" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" value="{{ request.args.get('q', '') }}" />
-    </form>
-    <div class="user-menu-wrap">
-      <button id="user-menu-toggle" class="avatar-btn" aria-haspopup="menu" aria-expanded="false" title="Account">
-        <span id="avatar-initial">{{ (session.username[0]|upper) if session.username else 'U' }}</span>
-      </button>
-      <div id="user-menu" class="user-menu" role="menu">
-        <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('settings') }}">Settings</a>
-        <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('questionnaire') }}">Update Home Features</a>
-        <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('logout') }}">Logout</a>
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-title-row">
+        <span class="hero-lead-icon" aria-hidden="true">
+          <svg class="qa-icon" aria-hidden="true"><use href="#icon-house"></use></svg>
+        </span>
+        <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">{{ session.username or 'Friend' }}</span></h1>
+      </div>
+      <p class="sub">Helping you take care of your home, one step at a time</p>
+    </div>
+    <div class="hero-actions">
+      <form class="hero-search" id="hero-search-form" role="search" method="get" action="{{ url_for('task_list') }}">
+        <input id="hero-search" name="q" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" value="{{ request.args.get('q', '') }}" />
+      </form>
+      <div class="user-menu-wrap">
+        <button id="user-menu-toggle" class="avatar-btn" aria-haspopup="menu" aria-expanded="false" title="Account">
+          <span id="avatar-initial">{{ (session.username[0]|upper) if session.username else 'U' }}</span>
+        </button>
+        <div id="user-menu" class="user-menu" role="menu">
+          <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('settings') }}">Settings</a>
+          <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('questionnaire') }}">Update Home Features</a>
+          <a class="btn btn-ghost menu-btn" role="menuitem" href="{{ url_for('logout') }}">Logout</a>
+        </div>
       </div>
     </div>
   </div>
+  <div class="hero-divider"></div>
 </section>
 {% endif %}
