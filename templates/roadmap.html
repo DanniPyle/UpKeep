@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="roadmap">
+  <div class="panel-card" style="margin-bottom:16px;">
+    <h1 style="margin-bottom:6px;">Roadmap</h1>
+    <p class="muted">Your upcoming plan from {{ today.strftime('%b %d') }} to {{ horizon.strftime('%b %d') }}</p>
+  </div>
+
+  {% if not weeks %}
+    <div class="panel-card">
+      <p>No upcoming tasks in the next 8 weeks. Nice work!</p>
+      <a class="quick-btn" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    </div>
+  {% endif %}
+
+  <div class="grid gap">
+    {% for w in weeks %}
+      <div class="panel-card">
+        <div class="week-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;">
+          <div class="when" style="font-weight:800;">Week of {{ w.week_start.strftime('%b %d') }} – {{ w.week_end.strftime('%b %d') }}</div>
+          <div class="stats" style="display:flex; gap:8px; align-items:center;">
+            <span class="pill" style="background:#eef2ff; color:#3730a3;">{{ w.count }} tasks</span>
+            {% if w.high_count %}<span class="pill high">{{ w.high_count }} high</span>{% endif %}
+            {% if w.seasonal_count %}<span class="pill" style="background:#fff3cd; color:#664d03;">{{ w.seasonal_count }} seasonal</span>{% endif %}
+          </div>
+        </div>
+
+        <div class="task-card-list">
+          {% for t in w.tasks %}
+          <div class="task-card upcoming">
+            <div class="card-header">
+              <div class="title">
+                {%- set seasonal = t.seasonal -%}
+                {%- set sc = (t.season_code | default('', true) | lower) -%}
+                {%- if seasonal and sc -%}
+                  {%- set icon_id = 'icon-' + (sc if sc != 'autumn' else 'fall') -%}
+                  <svg class="season-icon" aria-hidden="true"><use href="#{{ icon_id }}"></use></svg>
+                {%- endif -%}
+                {{ t.title }}
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="info">
+                <div class="info-item">
+                  <span class="label">Due</span>
+                  <span class="value">{{ (t.next_due_date or '-')|due_label }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">Priority</span>
+                  <span class="value"><span class="pill {{ (t.priority or '')|lower }}">{{ t.priority or '-' }}</span></span>
+                </div>
+                <div class="info-item">
+                  <span class="label">Frequency</span>
+                  <span class="value"><span class="badge freq">{{ (t.frequency_days or 0)|frequency_label }}</span></span>
+                </div>
+              </div>
+              {% if t.category %}
+              <div class="meta muted" style="margin-top:6px; font-size:13px;">Category: {{ t.category }}</div>
+              {% endif %}
+              <div class="actions">
+                <a class="complete-btn" href="{{ url_for('complete_task', task_id=t.id) }}">Complete</a>
+                <a class="edit-btn ghost" href="{{ url_for('task_detail', task_id=t.id) }}">Details</a>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

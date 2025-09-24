@@ -20,8 +20,65 @@
     <div class="progress" aria-hidden="true"><div class="bar" id="progressBar"></div></div>
 
     <form id="questionnaireForm" method="POST">
+      <!-- Step 0: Persona & Time Commitment -->
+      <div class="step active" data-title="Getting Started">
+        <h2>Every home (and every homeowner) is different. <br>
+            Tell us a bit about where you’re starting from so we can tailor your task list to match your pace.</h2>
+        <p class="muted">This helps us set a calm, right-sized plan for your first weeks.</p>
+
+        <div class="form-group">
+          <label>Which best describes you?</label>
+          <div class="option-cards">
+            <label class="option-card">
+              <div class="title">Just Moved In</div>
+              <div class="hint">I recently bought my home and want help learning what needs attention first.</div>
+              <input type="radio" name="persona" value="buyer" required {%- if prefill.get('persona')=='buyer' -%}checked{%- endif -%}>
+            </label>
+            <label class="option-card">
+              <div class="title">Getting Back on Track</div>
+              <div class="hint">I’ve owned my home for a while, but I’m behind on maintenance and want a manageable way to get things back in shape.</div>
+              <input type="radio" name="persona" value="catching_up" {%- if prefill.get('persona')=='catching_up' -%}checked{%- endif -%}>
+            </label>
+            <label class="option-card">
+              <div class="title">Staying Organized</div>
+              <div class="hint">I’ve kept up with regular maintenance, but I’d like a smarter way to track and plan tasks.</div>
+              <input type="radio" name="persona" value="on_top" {%- if prefill.get('persona')=='on_top' -%}checked{%- endif -%}>
+            </label>
+          </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+          <label>How much time do you want to devote to home care each week?</label>
+          <div class="option-cards">
+            {% set tb = prefill.get('time_budget_minutes_per_week') %}
+            <label class="option-card">
+              <div class="title">⏳ Light Touch</div>
+              <div class="hint">about 1 hour/week</div>
+              <input type="radio" name="time_budget" value="60" {{ 'checked' if tb==60 }}>
+            </label>
+            <label class="option-card">
+              <div class="title">⚖️ Steady Pace</div>
+              <div class="hint">around 2–3 hours/week</div>
+              <input type="radio" name="time_budget" value="150" {{ 'checked' if tb==150 }}>
+            </label>
+            <label class="option-card">
+              <div class="title">💪 Tackle More</div>
+              <div class="hint">4+ hours/week</div>
+              <input type="radio" name="time_budget" value="240" {{ 'checked' if tb==240 }}>
+            </label>
+            <label class="option-card">
+              <div class="title">Not sure yet</div>
+              <div class="hint">We’ll set a gentle default, you can change this later.</div>
+              <input type="radio" name="time_budget" value="" {{ 'checked' if not tb }}>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <!-- Step 1: Home Basics -->
-      <div class="step active" data-title="Home Basics">
+      <div class="step" data-title="Home Basics">
         <h2>Step 1: Home Basics</h2>
         <p class="muted">Let’s start with the basics about your home. Don't worry if you don't know the answer, we'll use the default and you can always come back and edit later.</p>
 
@@ -387,8 +444,8 @@
       const stepLabel = document.getElementById('stepLabel');
       const stepTitle = document.getElementById('stepTitle');
       const progressBar = document.getElementById('progressBar');
-      const totalSteps = 6; // content steps (exclude success)
-      let index = 0; // 0..5 are content steps
+      const totalSteps = 7; // content steps (exclude success)
+      let index = 0; // 0..6 are content steps
 
       function show(i){
         steps.forEach((s, idx)=>{

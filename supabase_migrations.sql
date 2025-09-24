@@ -302,3 +302,68 @@ BEGIN
     FROM tmp_task_season_map_title m
     WHERE lower(t.title) = lower(m.title);
 END$$;
+
+-- 7) Email notification preferences
+DO $$
+BEGIN
+    -- Create table if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'email_prefs'
+    ) THEN
+        CREATE TABLE public.email_prefs (
+            user_id integer PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+            email_opt_in boolean NOT NULL DEFAULT true,
+            timezone text NOT NULL DEFAULT 'UTC',
+            digest_frequency text NOT NULL DEFAULT 'daily' CHECK (digest_frequency IN ('off','daily','weekly')),
+            digest_hour integer NOT NULL DEFAULT 7 CHECK (digest_hour >= 0 AND digest_hour <= 23),
+            last_sent_at timestamptz
+        );
+    END IF;
+
+    -- Add columns if table exists but columns are missing (idempotent upgrades)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_prefs' AND column_name = 'email_opt_in') THEN
+        ALTER TABLE public.email_prefs ADD COLUMN email_opt_in boolean NOT NULL DEFAULT true;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_prefs' AND column_name = 'timezone') THEN
+        ALTER TABLE public.email_prefs ADD COLUMN timezone text NOT NULL DEFAULT 'UTC';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_prefs' AND column_name = 'digest_frequency') THEN
+        ALTER TABLE public.email_prefs ADD COLUMN digest_frequency text NOT NULL DEFAULT 'daily' CHECK (digest_frequency IN ('off','daily','weekly'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_prefs' AND column_name = 'digest_hour') THEN
+        ALTER TABLE public.email_prefs ADD COLUMN digest_hour integer NOT NULL DEFAULT 7 CHECK (digest_hour >= 0 AND digest_hour <= 23);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'email_prefs' AND column_name = 'last_sent_at') THEN
+        ALTER TABLE public.email_prefs ADD COLUMN last_sent_at timestamptz;
+    END IF;
+END$$;
+
+CREATE INDEX IF NOT EXISTS idx_email_prefs_digest_time ON public.email_prefs(digest_frequency, digest_hour);
+
+-- 8) Onboarding persona & budget on users; task flags for onboarding scheduling
+DO $$
+BEGIN
+    -- Users: persona, time budget, onboarding_started_at
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'persona') THEN
+        ALTER TABLE public.users ADD COLUMN persona text;
+        -- Optional constraint (skip if you prefer free text): CHECK (persona IN ('buyer','catching_up','on_top'))
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'time_budget_minutes_per_week') THEN
+        ALTER TABLE public.users ADD COLUMN time_budget_minutes_per_week integer;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'onboarding_started_at') THEN
+        ALTER TABLE public.users ADD COLUMN onboarding_started_at timestamptz;
+    END IF;
+
+    -- Tasks: activation_stage, seeded_from_onboarding, stagger_offset
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'activation_stage') THEN
+        ALTER TABLE public.tasks ADD COLUMN activation_stage smallint;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'seeded_from_onboarding') THEN
+        ALTER TABLE public.tasks ADD COLUMN seeded_from_onboarding boolean NOT NULL DEFAULT false;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'stagger_offset') THEN
+        ALTER TABLE public.tasks ADD COLUMN stagger_offset smallint;
+    END IF;
+END$$;

@@ -445,6 +445,8 @@ def _insert_tasks_for_user(user_id, rows):
             frequency_days = default_freq
 
         next_due = _compute_next_due_date(r, today)
+        # Optional: map start_offset_days to a small stagger offset hint (days within period)
+        stagger_offset = _parse_int(r.get('start_offset_days'), default=None)
 
         payload = {
             'user_id': user_id,
@@ -461,7 +463,13 @@ def _insert_tasks_for_user(user_id, rows):
             'season_code': ((r.get('season_code') or '').strip().lower() or None),
             'season_anchor_month': _parse_int(r.get('season_anchor_month'), default=None),
             'season_anchor_day': _parse_int(r.get('season_anchor_day'), default=None),
+            'seeded_from_onboarding': True,
         }
+        if stagger_offset is not None:
+            try:
+                payload['stagger_offset'] = int(stagger_offset)
+            except Exception:
+                pass
         # Only include task_key if supported (may be disabled if schema missing or cache stale)
         if TASK_KEY_SUPPORTED and task_key:
             payload['task_key'] = task_key
@@ -495,7 +503,73 @@ def _insert_tasks_for_user(user_id, rows):
                 # Continue with remaining batches to salvage progress
                 continue
 
-def _apply_onboarding_ramp(rows, today=None, first_seed=False):
+def _enrich_task_rows_defaults(rows):
+    """Mutate in-place: add sensible defaults for missing fields based on title/metadata.
+    Sets: priority, safety_critical, category, seasonal, activation_stage if missing.
+    """
+    SAFETY_SURFACES = (
+        'smoke detector', 'carbon monoxide', 'co detector', 'gfi', 'gfci', 'alarm',
+        'natural gas', 'leak', 'dryer vent', 'shutoff', 'sump pump'
+    )
+    SAFETY_ACTION_TESTS = ('test', 'check', 'inspect')
+    CATEGORY_MAP = {
+        'hvac': ('filter', 'furnace', 'air handler', 'ac ', 'a/c', 'condenser', 'registers'),
+        'plumbing': ('water heater', 'sink', 'toilet', 'leak', 'softener', 'septic', 'sump', 'shutoff'),
+        'kitchen': ('dishwasher', 'range hood', 'refrigerator', 'garbage disposal'),
+        'exterior': ('gutters', 'downspout', 'deck', 'patio', 'fence', 'garage door', 'roof', 'masonry', 'brick'),
+        'safety': ('smoke', 'co ', 'carbon monoxide', 'alarm', 'extinguisher', 'gfi', 'gfci', 'fire '),
+        'laundry': ('dryer', 'lint', 'washer'),
+    }
+    for r in rows:
+        title = (r.get('title') or '').strip()
+        t_low = title.lower()
+        # Priority default
+        pr = (r.get('priority') or '').strip().lower()
+        # Compute safety_critical first so we can use it for priority
+        # safety_critical default flag (used by ramp):
+        # Only consider as safety-critical when it's a test/check/inspect of safety surfaces.
+        if r.get('safety_critical') in (None, ''):
+            is_safety_surface = any(k in t_low for k in SAFETY_SURFACES)
+            is_test_action = any(a in t_low for a in SAFETY_ACTION_TESTS)
+            r['safety_critical'] = bool(is_safety_surface and is_test_action)
+        # If explicitly about replacing fire extinguishers, do NOT mark as safety-critical by default
+        if 'replace' in t_low and 'extinguisher' in t_low:
+            r['safety_critical'] = False
+
+        if not pr:
+            if bool(r.get('safety_critical')):
+                r['priority'] = 'high'
+            elif 'filter' in t_low or 'gutters' in t_low:
+                r['priority'] = 'medium'
+            else:
+                r['priority'] = None
+        # Category default
+        cat = (r.get('category') or '').strip().lower()
+        if not cat:
+            for name, keys in CATEGORY_MAP.items():
+                if any(k in t_low for k in keys):
+                    r['category'] = name
+                    break
+        # Seasonal default
+        if r.get('seasonal') in (None, ''):
+            has_season_meta = bool((r.get('season_code') or '').strip() or (r.get('seasonal_anchor_type') or '').strip())
+            if has_season_meta or 'winterize' in t_low or 'spring' in t_low or 'fall ' in t_low or 'autumn' in t_low:
+                r['seasonal'] = True
+        # Activation stage hint from frequency
+        try:
+            freq = int(r.get('frequency_days') or 0)
+        except Exception:
+            freq = 0
+        if r.get('activation_stage') in (None, ''):
+            if freq >= 365*2:
+                r['activation_stage'] = 3  # long-interval
+            elif freq >= 180:
+                r['activation_stage'] = 2  # semi/annual
+            else:
+                r['activation_stage'] = 1  # monthly/quarterly/other
+    return rows
+
+def _apply_onboarding_ramp(user_id, rows, today=None, first_seed=False):
     """Mutate CSV row dicts in-place to add start_offset_days for non-critical tasks.
     Rules:
       - If not first_seed or ramp disabled: no-op
@@ -509,9 +583,47 @@ def _apply_onboarding_ramp(rows, today=None, first_seed=False):
     if today is None:
         today = datetime.now().date()
 
+    # Defaults from global settings
     near_term_days = int(RAMP_SETTINGS.get('near_term_days', 21))
     initial_cap = int(RAMP_SETTINGS.get('initial_cap', 8))
     stagger_weeks = max(1, int(RAMP_SETTINGS.get('stagger_weeks', 8)))
+
+    # Persona- and budget-aware overrides
+    try:
+        ures = supabase.table('users').select('persona,time_budget_minutes_per_week').eq('id', user_id).execute()
+        if ures.data:
+            persona = (ures.data[0].get('persona') or '').strip().lower()
+            budget = ures.data[0].get('time_budget_minutes_per_week')
+            # initial_cap: total immediate tasks allowed (seasonal count too)
+            # per_day_cap: immediate tasks to schedule per day during first week
+            persona_caps = {
+                'buyer':       {'initial_cap': 4, 'per_day_cap': 2, 'stagger_weeks': 12, 'near_term_days': 21},
+                'catching_up': {'initial_cap': 6, 'per_day_cap': 3, 'stagger_weeks': 10, 'near_term_days': 21},
+                'on_top':      {'initial_cap': 8, 'per_day_cap': 3, 'stagger_weeks': 8,  'near_term_days': 21},
+            }
+            if persona in persona_caps:
+                cfg = persona_caps[persona]
+                initial_cap = cfg['initial_cap']
+                stagger_weeks = cfg['stagger_weeks']
+                near_term_days = cfg['near_term_days']
+                per_day_cap = cfg['per_day_cap']
+            else:
+                per_day_cap = 3
+            # Adjust caps by time budget (lighter plan for smaller budgets)
+            try:
+                b = int(budget) if budget is not None else None
+                if b is not None:
+                    if b <= 30:
+                        initial_cap = max(3, initial_cap - 1)
+                        stagger_weeks = max(stagger_weeks, 12)
+                        per_day_cap = 2
+                    elif b >= 120:
+                        initial_cap = min(10, initial_cap + 1)
+                        per_day_cap = min(4, per_day_cap + 1)
+            except Exception:
+                pass
+    except Exception:
+        per_day_cap = 3
 
     # Prepare scored list
     scored = []
@@ -524,6 +636,11 @@ def _apply_onboarding_ramp(rows, today=None, first_seed=False):
         # compute next_due as if no offset
         nd = _compute_next_due_date(r, today)
         days_out = (nd - today).days
+        # Identify long-interval tasks for deferral in onboarding
+        try:
+            freq_days = int(r.get('frequency_days') or 0)
+        except Exception:
+            freq_days = 0
         score = 0
         if safety:
             score += 100
@@ -533,13 +650,13 @@ def _apply_onboarding_ramp(rows, today=None, first_seed=False):
             score += 10
         if seasonal and days_out <= near_term_days:
             score += 15
-        scored.append((score, days_out, r))
+        scored.append((score, days_out, freq_days, r))
 
     # Sort by score desc, then soonest due
     scored.sort(key=lambda t: (-t[0], t[1]))
 
     # Keep all safety immediate
-    for _, _, r in scored:
+    for _, _, freq_days, r in scored:
         if _parse_bool(r.get('safety_critical'), default=False):
             immediate.append(r)
         else:
@@ -552,13 +669,48 @@ def _apply_onboarding_ramp(rows, today=None, first_seed=False):
             later.remove(r)
             immediate.append(r)
 
-    # Fill remaining immediate up to cap
-    remaining_slots = max(0, initial_cap - len([r for r in immediate if not _parse_bool(r.get('seasonal'), default=False)]))
-    for _, _, r in scored:
+    # Defer long-interval tasks explicitly on first seed
+    if first_seed:
+        deferred = []
+        for r in list(immediate):
+            try:
+                fd = int(r.get('frequency_days') or 0)
+            except Exception:
+                fd = 0
+            if fd >= 365*2 and not _parse_bool(r.get('safety_critical'), default=False):
+                # Push multi-year out by at least 180 days
+                r['start_offset_days'] = str(max(_parse_int(r.get('start_offset_days'), default=0) or 0, 180))
+                immediate.remove(r)
+                deferred.append(r)
+        later.extend(deferred)
+
+    # Hard defer on first seed: non-safety tasks with annual or longer frequency should not be day-1
+    if first_seed:
+        for r in list(later):
+            try:
+                fd = int(r.get('frequency_days') or 0)
+            except Exception:
+                fd = 0
+            if fd >= 365 and not _parse_bool(r.get('seasonal'), default=False):
+                # push out at least ~90 days to avoid day-1 feel
+                if _parse_int(r.get('start_offset_days'), default=None) is None:
+                    r['start_offset_days'] = '90'
+
+    # Fill remaining immediate up to total cap (seasonal counts too)
+    remaining_slots = max(0, initial_cap - len(immediate))
+    for _, _, _fd, r in scored:
         if r in immediate:
             continue
         if remaining_slots <= 0:
             break
+        # Avoid pulling long-intervals into immediate on first seed
+        if first_seed:
+            try:
+                fd = int(r.get('frequency_days') or 0)
+            except Exception:
+                fd = 0
+            if fd >= 365 and not _parse_bool(r.get('safety_critical'), default=False):
+                continue
         immediate.append(r)
         if r in later:
             later.remove(r)
@@ -577,6 +729,20 @@ def _apply_onboarding_ramp(rows, today=None, first_seed=False):
             if count >= per_week:
                 count = 0
                 week += 1
+
+    # Distribute immediate tasks across first week using per-day caps
+    if immediate:
+        day_cursor = 0
+        daily_count = 0
+        for r in immediate:
+            # Safety stays day 0 but still obey per-day cap by rolling to next day if exceeded
+            if daily_count >= per_day_cap:
+                day_cursor += 1
+                daily_count = 0
+            # Only set offset if none
+            if _parse_int(r.get('start_offset_days'), default=None) is None:
+                r['start_offset_days'] = str( min(6, max(0, day_cursor)) )
+            daily_count += 1
     return rows
 
 def _backfill_from_templates(user_id, features):
@@ -599,16 +765,31 @@ def _backfill_from_templates(user_id, features):
                 if not title or title.lower() in existing_titles:
                     continue
                 freq = int(t.get('frequency_days') or 30)
-                next_due = today + timedelta(days=freq)
-                to_insert.append({
-                    'user_id': user_id,
+                # Build a row-like dict and enrich to set defaults similar to catalog flow
+                row_like = {
                     'title': title,
                     'description': t.get('description') or None,
                     'frequency_days': freq,
+                    'seasonal': t.get('seasonal'),
+                    'seasonal_anchor_type': t.get('seasonal_anchor_type'),
+                    'season_code': t.get('season_code'),
+                    'category': t.get('category'),
+                    'priority': t.get('priority'),
+                }
+                _enrich_task_rows_defaults([row_like])
+                next_due = today + timedelta(days=freq)
+                to_insert.append({
+                    'user_id': user_id,
+                    'title': row_like.get('title'),
+                    'description': row_like.get('description'),
+                    'frequency_days': row_like.get('frequency_days'),
                     'next_due_date': next_due.isoformat(),
                     'is_completed': False,
-                    'priority': None,
-                    'category': None
+                    'priority': row_like.get('priority'),
+                    'category': row_like.get('category'),
+                    'seasonal': bool(row_like.get('seasonal') or False),
+                    'seasonal_anchor_type': row_like.get('seasonal_anchor_type'),
+                    'season_code': (row_like.get('season_code') or None),
                 })
         if to_insert:
             supabase.table('tasks').insert(to_insert).execute()
@@ -619,9 +800,27 @@ def seed_tasks_from_catalog_rows(user_id, features, all_rows):
     """Clear existing tasks and seed from provided catalog rows, filtered & overlap-resolved.
     Applies onboarding ramp on first seed to avoid overwhelming the user.
     """
-    # Determine if this is the user's first seed (no tasks yet)
+    # Determine if we should apply aggressive onboarding ramp
+    # Use first seed OR if onboarding_started_at is within the last 14 days
     existing = supabase.table('tasks').select('id').eq('user_id', user_id).limit(1).execute()
     first_seed = not bool(existing.data)
+    ramp_mode = first_seed
+    try:
+        ures = supabase.table('users').select('onboarding_started_at').eq('id', user_id).execute()
+        if ures.data:
+            started_raw = ures.data[0].get('onboarding_started_at')
+            if started_raw:
+                started = datetime.fromisoformat(str(started_raw).replace('Z', '+00:00'))
+                account_age_days = (datetime.utcnow() - started).days
+                if account_age_days <= 14:
+                    ramp_mode = True
+            else:
+                # No onboarding_started_at yet -> treat as ramp mode
+                ramp_mode = True
+        else:
+            ramp_mode = True
+    except Exception:
+        ramp_mode = True
 
     # Clear only upcoming/future active tasks (preserve completed and overdue)
     today_iso = datetime.now().date().isoformat()
@@ -651,9 +850,27 @@ def seed_tasks_from_catalog_rows(user_id, features, all_rows):
         except Exception as e2:
             print(f"Fallback clear failed: {e2}")
     filtered = _filter_rows_by_features(all_rows, features)
+    # During ramp mode, ignore CSV-provided start_offset_days so code drives staggering
+    if ramp_mode:
+        for r in filtered:
+            if 'start_offset_days' in r:
+                r['start_offset_days'] = None
+    # Add sensible defaults before overlap resolution and ramp
+    filtered = _enrich_task_rows_defaults(filtered)
     resolved = _resolve_overlaps(filtered)
-    # Apply ramp if first seed
-    resolved = _apply_onboarding_ramp(resolved, today=datetime.now().date(), first_seed=first_seed)
+    # Apply ramp in ramp_mode (first seed or within onboarding window)
+    resolved = _apply_onboarding_ramp(user_id, resolved, today=datetime.now().date(), first_seed=ramp_mode)
+    # Safety net: ensure annual+ non-safety tasks are not day-1 during ramp
+    if ramp_mode:
+        for r in resolved:
+            try:
+                fd = int(r.get('frequency_days') or 0)
+            except Exception:
+                fd = 0
+            if fd >= 365 and not _parse_bool(r.get('safety_critical'), default=False):
+                so = _parse_int(r.get('start_offset_days'), default=None)
+                if so is None or so < 90:
+                    r['start_offset_days'] = '90'
     _insert_tasks_for_user(user_id, resolved)
 
 def seed_tasks_from_static_catalog_or_templates(user_id, features):
@@ -727,7 +944,7 @@ def settings():
         user = ures.data[0]
 
         if request.method == 'POST':
-            name = (request.form.get('username') or '').strip()
+            name = (request.form.get('name') or '').strip()
             email = (request.form.get('email') or '').strip()
             current_pw = request.form.get('current_password') or ''
             new_pw = request.form.get('new_password') or ''
@@ -735,14 +952,10 @@ def settings():
 
             updates = {}
 
-            # Update username
+            # Update display name (stored in username column)
             if name and name != user.get('username'):
-                # Ensure unique
-                exists = supabase.table('users').select('id').eq('username', name).neq('id', user_id).execute()
-                if exists.data:
-                    flash('That username is already taken')
-                    return redirect(url_for('settings'))
-                updates['username'] = name
+                # Ensure DB unique constraint is respected while displaying plain name in-session
+                updates['username'] = _generate_unique_username(name)
 
             # Update email
             if email and email != user.get('email'):
@@ -768,9 +981,9 @@ def settings():
 
             if updates:
                 supabase.table('users').update(updates).eq('id', user_id).execute()
-                # Update session username if changed
+                # Update session display name if changed
                 if 'username' in updates:
-                    session['username'] = updates['username']
+                    session['username'] = name  # keep plain name for the current session
                 flash('Settings updated')
                 return redirect(url_for('settings'))
 
@@ -1038,39 +1251,46 @@ def task_history(task_id):
         return jsonify({'error': str(e)}), 500
     return render_template('index.html')
 
+def _generate_unique_username(name: str) -> str:
+    """Make a unique value for the users.username column while keeping the name visible.
+    Falls back to appending -2, -3, ... if needed.
+    """
+    base = (name or 'User').strip() or 'User'
+    candidate = base
+    suffix = 2
+    while True:
+        try:
+            exists = supabase.table('users').select('id').eq('username', candidate).execute()
+            if not exists.data:
+                return candidate
+        except Exception:
+            return candidate
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
+        name = request.form['name']
         email = request.form['email']
         password = request.form['password']
         
-        if not username or not email or not password:
+        if not name or not email or not password:
             flash('All fields are required!')
             return render_template('register.html')
         
         try:
-            # Check if user already exists (username or email)
-            existing_user = None
-            try:
-                by_username = supabase.table('users').select('id').eq('username', username).execute()
-                if by_username.data:
-                    existing_user = by_username
-                else:
-                    by_email = supabase.table('users').select('id').eq('email', email).execute()
-                    if by_email.data:
-                        existing_user = by_email
-            except Exception:
-                existing_user = None
-
-            if existing_user and existing_user.data:
-                flash('Username or email already exists!')
+            # Check if user already exists by email only
+            existing_email = supabase.table('users').select('id').eq('email', email).execute()
+            if existing_email.data:
+                flash('Email already exists!')
                 return render_template('register.html')
             
-            # Create new user
+            # Create new user (store name in 'username' column for display)
             password_hash = generate_password_hash(password)
+            unique_username = _generate_unique_username(name)
             result = supabase.table('users').insert({
-                'username': username,
+                'username': unique_username,
                 'email': email,
                 'password_hash': password_hash
             }).execute()
@@ -1078,7 +1298,7 @@ def register():
             if result.data:
                 user_id = result.data[0]['id']
                 session['user_id'] = user_id
-                session['username'] = username
+                session['username'] = name  # display plain name in-session
                 
                 flash('Registration successful!')
                 return redirect(url_for('questionnaire'))
@@ -1093,11 +1313,11 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        email = request.form.get('email')
         password = request.form['password']
         
         try:
-            result = supabase.table('users').select('*').eq('username', username).execute()
+            result = supabase.table('users').select('*').eq('email', email).execute()
             
             if result.data and check_password_hash(result.data[0]['password_hash'], password):
                 user = result.data[0]
@@ -1105,7 +1325,7 @@ def login():
                 session['username'] = user['username']
                 return redirect(url_for('dashboard'))
             else:
-                flash('Invalid username or password!')
+                flash('Invalid email or password!')
                 
         except Exception as e:
             flash(f'Login error: {str(e)}')
@@ -1273,6 +1493,31 @@ def questionnaire():
             extended[k] = _normalize_season_value(extended.get(k))
         
         try:
+            # Persist persona and time budget on the user row
+            persona = (request.form.get('persona') or '').strip().lower() or None
+            tb_raw = request.form.get('time_budget')
+            time_budget = None
+            try:
+                time_budget = int(tb_raw) if (tb_raw is not None and str(tb_raw).strip() != '') else None
+            except Exception:
+                time_budget = None
+
+            try:
+                ures = supabase.table('users').select('onboarding_started_at').eq('id', user_id).execute()
+                u_updates = {}
+                if persona:
+                    u_updates['persona'] = persona
+                if time_budget is not None:
+                    u_updates['time_budget_minutes_per_week'] = time_budget
+                # Set onboarding_started_at if not set
+                if (not ures.data) or (not ures.data[0].get('onboarding_started_at')):
+                    u_updates['onboarding_started_at'] = datetime.utcnow().isoformat()
+                if u_updates:
+                    supabase.table('users').update(u_updates).eq('id', user_id).execute()
+            except Exception as _e:
+                # Non-fatal; continue with features
+                print(f"Warning: failed to save persona/budget: {_e}")
+
             # Check if features already exist for this user
             existing_full = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
 
@@ -1327,6 +1572,14 @@ def questionnaire():
         res = supabase.table('home_features').select('*').eq('user_id', user_id).execute()
         if res.data:
             prefill = res.data[0]
+        # Also prefill persona/budget from users
+        try:
+            ures = supabase.table('users').select('persona,time_budget_minutes_per_week').eq('id', user_id).execute()
+            if ures.data:
+                prefill['persona'] = (ures.data[0].get('persona') or None)
+                prefill['time_budget_minutes_per_week'] = ures.data[0].get('time_budget_minutes_per_week')
+        except Exception:
+            pass
     except Exception as e:
         print(f"Error loading home_features for prefill: {e}")
     return render_template('questionnaire.html', prefill=prefill)
@@ -1339,6 +1592,64 @@ def generate_tasks_for_user(user_id, features):
             print('No tasks seeded (catalog and templates both failed).')
     except Exception as e:
         print(f"Error generating tasks: {e}")
+
+@app.route('/roadmap')
+def roadmap():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = session['user_id']
+    try:
+        today = datetime.now().date()
+        horizon = today + timedelta(days=56)  # 8 weeks
+        # Pull upcoming active tasks in horizon
+        q = (supabase
+             .table('tasks')
+             .select('*')
+             .eq('user_id', user_id)
+             .eq('archived', False)
+             .eq('is_completed', False)
+             .gte('next_due_date', today.isoformat())
+             .lte('next_due_date', horizon.isoformat())
+             .order('next_due_date'))
+        res = q.execute()
+        rows = res.data or []
+
+        # Group by week starting Monday
+        def week_start(d: date) -> date:
+            return d - timedelta(days=d.weekday())
+
+        weeks = {}
+        for t in rows:
+            try:
+                due = datetime.fromisoformat((t.get('next_due_date') or '')).date()
+            except Exception:
+                # If missing or invalid, skip visualization
+                continue
+            ws = week_start(due)
+            weeks.setdefault(ws, []).append(t)
+
+        # Prepare sorted list for template
+        items = []
+        for ws, ts in weeks.items():
+            we = ws + timedelta(days=6)
+            # basic stats
+            count = len(ts)
+            high = sum(1 for x in ts if (x.get('priority') or '').lower() == 'high')
+            seasonal = sum(1 for x in ts if bool(x.get('seasonal')))
+            items.append({
+                'week_start': ws,
+                'week_end': we,
+                'count': count,
+                'high_count': high,
+                'seasonal_count': seasonal,
+                'tasks': sorted(ts, key=lambda x: (x.get('next_due_date') or '', (x.get('priority') or 'z')))
+            })
+        items.sort(key=lambda x: x['week_start'])
+
+        return render_template('roadmap.html', weeks=items, today=today, horizon=horizon)
+    except Exception as e:
+        flash(f'Failed to load roadmap: {e}')
+        return redirect(url_for('dashboard'))
 
 @app.route('/dashboard')
 def dashboard():
@@ -2405,11 +2716,11 @@ def api_register():
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json()
-    username = data.get('username')
+    email = data.get('email')
     password = data.get('password')
     
     try:
-        result = supabase.table('users').select('*').eq('username', username).execute()
+        result = supabase.table('users').select('*').eq('email', email).execute()
         
         if result.data and check_password_hash(result.data[0]['password_hash'], password):
             user = result.data[0]
@@ -2420,10 +2731,10 @@ def api_login():
             
             return jsonify({
                 'token': token,
-                'user': {'id': user['id'], 'username': user['username']}
+                'user': {'id': user['id'], 'username': user['username'], 'email': user['email']}
             })
         else:
-            return jsonify({'error': 'Invalid username or password'}), 401
+            return jsonify({'error': 'Invalid email or password'}), 401
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500

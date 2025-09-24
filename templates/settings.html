@@ -13,8 +13,8 @@
     <h3 class="panel-title">Profile</h3>
     <form method="post" action="{{ url_for('settings') }}" style="display:grid; gap: 14px;">
       <div class="form-row">
-        <label for="username">Name</label>
-        <input id="username" name="username" type="text" value="{{ user.username or '' }}" />
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" value="{{ user.username or '' }}" />
       </div>
       <div class="form-row">
         <label for="email">Email</label>
