@@ -1023,9 +1023,10 @@ def questionnaire():
             # Regenerate tasks using DB templates if available
             diag = seed_tasks_from_static_catalog_or_templates(user_id, features)
             if diag.get('source') == 'error':
-                flash(f'Seeding error: {diag.get("error", "unknown error")}', 'error')
+                flash(f'Error creating your plan: {diag.get("error", "unknown error")}', 'error')
             else:
-                flash(f'Features saved! Seeding: {diag.get("source")} source, {diag.get("considered")} templates, {diag.get("matched")} matched, {diag.get("inserted")} tasks inserted.')
+                # Success - redirect without debug message
+                pass
             return redirect(url_for('dashboard'))
         except Exception as e:
             flash(f'Failed to save features: {e}')

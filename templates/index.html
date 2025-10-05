@@ -1,65 +1,374 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero" aria-label="Welcome">
-  <div class="hero-text">
-    <h1 class="greeting">Home Maintenance Tracker</h1>
-    <p class="sub">Keep your home running smoothly with an easy, personalized plan.</p>
-  </div>
-  <div class="hero-actions">
-    <a class="btn ghost" href="{{ url_for('login') }}">Log in</a>
+<style>
+  .landing-hero {
+    background: linear-gradient(135deg, #fbf6ef 0%, #ffffff 100%);
+    padding: 80px 24px 60px;
+    text-align: center;
+    border-bottom: 1px solid #f2f2f2;
+  }
+  
+  .landing-logo {
+    max-width: 400px;
+    height: auto;
+    margin: 0 auto 32px;
+    display: block;
+  }
+  
+  .landing-tagline {
+    font-size: 24px;
+    color: #2d2f3a;
+    font-weight: 400;
+    max-width: 600px;
+    margin: 0 auto 16px;
+    line-height: 1.4;
+  }
+  
+  .landing-subtitle {
+    font-size: 18px;
+    color: #7a8a94;
+    max-width: 500px;
+    margin: 0 auto 40px;
+    line-height: 1.5;
+  }
+  
+  .landing-cta {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  
+  .landing-cta .btn {
+    font-size: 18px;
+    padding: 16px 40px;
+    border-radius: 8px;
+  }
+  
+  .landing-cta .btn-primary {
+    background: #dfae3d;
+    color: #2d2f3a;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(223, 174, 61, 0.3);
+    transition: all 0.2s;
+  }
+  
+  .landing-cta .btn-primary:hover {
+    background: #d4a02f;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(223, 174, 61, 0.4);
+  }
+  
+  .landing-cta .btn-secondary {
+    background: transparent;
+    color: #2f3e56;
+    border: 2px solid #2f3e56;
+    font-weight: 500;
+  }
+  
+  .landing-cta .btn-secondary:hover {
+    background: #2f3e56;
+    color: #ffffff;
+  }
+  
+  .features-section {
+    padding: 60px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 32px;
+    margin-top: 48px;
+  }
+  
+  .feature-card {
+    background: #ffffff;
+    border: 1px solid #f2f2f2;
+    border-radius: 12px;
+    padding: 32px 24px;
+    text-align: center;
+    transition: all 0.3s;
+  }
+  
+  .feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    border-color: #dfae3d;
+  }
+  
+  .feature-icon {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, #dfae3d 0%, #f0c050 100%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  
+  .feature-icon svg {
+    width: 32px;
+    height: 32px;
+    fill: #2d2f3a;
+  }
+  
+  .feature-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #2d2f3a;
+    margin-bottom: 12px;
+  }
+  
+  .feature-desc {
+    font-size: 15px;
+    color: #7a8a94;
+    line-height: 1.6;
+  }
+  
+  .how-it-works {
+    background: #fbf6ef;
+    padding: 60px 24px;
+  }
+  
+  .how-it-works-content {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  .how-it-works h2 {
+    text-align: center;
+    font-size: 32px;
+    color: #2d2f3a;
+    margin-bottom: 48px;
+  }
+  
+  .steps {
+    display: grid;
+    gap: 24px;
+  }
+  
+  .step {
+    display: flex;
+    gap: 20px;
+    align-items: start;
+  }
+  
+  .step-number {
+    width: 48px;
+    height: 48px;
+    background: #dfae3d;
+    color: #2d2f3a;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  
+  .step-content h3 {
+    font-size: 18px;
+    color: #2d2f3a;
+    margin-bottom: 8px;
+  }
+  
+  .step-content p {
+    font-size: 15px;
+    color: #7a8a94;
+    margin: 0;
+  }
+  
+  .social-proof {
+    padding: 60px 24px;
+    text-align: center;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  
+  .social-proof h2 {
+    font-size: 28px;
+    color: #2d2f3a;
+    margin-bottom: 32px;
+  }
+  
+  .testimonials {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 24px;
+    margin-top: 32px;
+  }
+  
+  .testimonial {
+    background: #ffffff;
+    border: 1px solid #f2f2f2;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: left;
+  }
+  
+  .testimonial-text {
+    font-size: 15px;
+    color: #2d2f3a;
+    font-style: italic;
+    margin-bottom: 16px;
+    line-height: 1.6;
+  }
+  
+  .testimonial-author {
+    font-size: 14px;
+    color: #7a8a94;
+    font-weight: 600;
+  }
+  
+  .final-cta {
+    background: linear-gradient(135deg, #2f3e56 0%, #2d2f3a 100%);
+    color: #ffffff;
+    padding: 80px 24px;
+    text-align: center;
+  }
+  
+  .final-cta h2 {
+    font-size: 36px;
+    margin-bottom: 16px;
+    color: #ffffff;
+  }
+  
+  .final-cta p {
+    font-size: 18px;
+    color: #f2f2f2;
+    margin-bottom: 32px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  .final-cta .btn {
+    background: #dfae3d;
+    color: #2d2f3a;
+    font-size: 18px;
+    padding: 16px 48px;
+    font-weight: 600;
+    border-radius: 8px;
+  }
+  
+  .final-cta .btn:hover {
+    background: #f0c050;
+    transform: translateY(-2px);
+  }
+</style>
+
+<!-- Hero Section -->
+<section class="landing-hero">
+  <img src="https://img.mailinblue.com/9919553/images/content_library/original/68e17f9d8976a4ddf55c87fb.png" alt="Keeply Home" class="landing-logo">
+  <h1 class="landing-tagline">Home maintenance made simple, stress-free, and actually doable</h1>
+  <p class="landing-subtitle">Never miss important upkeep again. Get a personalized plan that fits your home and your schedule.</p>
+  <div class="landing-cta">
+    <a href="{{ url_for('register') }}" class="btn btn-primary">Get Started</a>
+    <a href="{{ url_for('login') }}" class="btn btn-secondary">Log In</a>
   </div>
 </section>
 
-<!-- Soft feature tiles placed below the hero -->
-<div class="overview-tiles" style="margin-top:14px">
-  <div class="tile">
-    <div class="tile-title">
-      <svg class="icon" aria-hidden="true"><use href="#icon-house"></use></svg>
-      Personalized plan
+<!-- Features Section -->
+<section class="features-section">
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg aria-hidden="true"><use href="#icon-house"></use></svg>
+      </div>
+      <h3 class="feature-title">Tailored to Your Home</h3>
+      <p class="feature-desc">Answer a few quick questions and get a maintenance plan customized to your home's unique features.</p>
     </div>
-    <div class="tile-value">Tasks tailored to your home’s features</div>
-  </div>
-  <div class="tile">
-    <div class="tile-title">
-      <svg class="icon" aria-hidden="true"><use href="#icon-fall"></use></svg>
-      Seasonal reminders
+    
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg aria-hidden="true"><use href="#icon-fall"></use></svg>
+      </div>
+      <h3 class="feature-title">Season-Smart Reminders</h3>
+      <p class="feature-desc">Get timely notifications for seasonal tasks like winterizing pipes or cleaning gutters—at just the right time.</p>
     </div>
-    <div class="tile-value">Do the right jobs at the right time of year</div>
-  </div>
-  <div class="tile">
-    <div class="tile-title">
-      <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
-      Simple tracking
+    
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg aria-hidden="true"><use href="#icon-check"></use></svg>
+      </div>
+      <h3 class="feature-title">One-Click Tracking</h3>
+      <p class="feature-desc">Complete, snooze, or review tasks with a single click. Simple tracking that actually works.</p>
     </div>
-    <div class="tile-value">One click to complete, snooze, or review history</div>
   </div>
-</div>
+</section>
 
-<div class="task-section span-all" aria-label="How it works">
-  <div class="panel-card">
-    <h3 class="panel-title">How it works</h3>
-    <div class="card-body">
-      <ol style="margin-left:20px">
-        <li>Create your free account</li>
-        <li>Answer a few quick questions about your home</li>
-        <li>We generate a maintenance plan with smart due dates</li>
-        <li>Track progress and view history—never miss important upkeep</li>
-      </ol>
-      <div class="hero-actions" style="margin-top:10px">
-        <a class="btn primary" href="{{ url_for('register') }}">Create account</a>
-        <a class="btn ghost" href="{{ url_for('login') }}">I already have an account</a>
+<!-- How It Works -->
+<section class="how-it-works">
+  <div class="how-it-works-content">
+    <h2>How It Works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h3>Create Your Account</h3>
+          <p>Sign up in seconds—no credit card required.</p>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h3>Tell Us About Your Home</h3>
+          <p>Answer a few quick questions about your home's features. Most people finish in under 2 minutes.</p>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h3>Get Your Personalized Plan</h3>
+          <p>We generate a smart maintenance schedule with tasks tailored to your home and climate.</p>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <h3>Stay on Track Effortlessly</h3>
+          <p>Track progress, view history, and get weekly check-ins—never miss important upkeep again.</p>
+        </div>
       </div>
     </div>
   </div>
-  
-  <div class="panel-card" style="margin-top:14px">
-    <h3 class="panel-title">Why homeowners like it</h3>
-    <ul style="margin: 0 0 0 18px;">
-      <li>Fast setup—most people finish in under 2 minutes</li>
-      <li>Clear, friendly cards that show what to do next</li>
-      <li>Season-aware so you winterize and prep on time</li>
-    </ul>
+</section>
+
+<!-- Social Proof -->
+<section class="social-proof">
+  <h2>Why Homeowners Love Keeply</h2>
+  <div class="testimonials">
+    <div class="testimonial">
+      <p class="testimonial-text">"Finally, a home maintenance tracker that doesn't overwhelm me. The seasonal reminders are a game-changer!"</p>
+      <p class="testimonial-author">— Sarah M., Homeowner</p>
+    </div>
+    
+    <div class="testimonial">
+      <p class="testimonial-text">"Setup took 2 minutes and now I never forget to change my HVAC filters or clean the gutters. Worth it!"</p>
+      <p class="testimonial-author">— Mike T., First-Time Buyer</p>
+    </div>
+    
+    <div class="testimonial">
+      <p class="testimonial-text">"The personalized plan is perfect for my older home. It knows exactly what needs attention and when."</p>
+      <p class="testimonial-author">— Jennifer L., Homeowner</p>
+    </div>
   </div>
-</div>
+</section>
+
+<!-- Final CTA -->
+<section class="final-cta">
+  <h2>Ready to Take Control of Your Home?</h2>
+  <p>Join homeowners who are keeping their homes in great shape—without the stress.</p>
+  <a href="{{ url_for('register') }}" class="btn">Get Started Today</a>
+</section>
 {% endblock %}
