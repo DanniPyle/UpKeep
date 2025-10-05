@@ -59,7 +59,7 @@
   /* warm gradient retained using brand variables */
   background: linear-gradient(180deg, var(--floral-white) 0%, var(--white-smoke) 55%, var(--floral-white) 100%);
   border-bottom: 1px solid var(--border);
-  padding: 10px 16px;
+  padding: 10px 24px;
   margin: 0 0 6px 0; /* tighter space beneath banner */
 }
 
@@ -1304,7 +1304,7 @@ input, select, textarea {
 }
 
 .container {
-    max-width: 1100px;
+    max-width: 1148px;
     margin: 0 auto;
     padding: 24px;
     padding-top: calc(2px + env(safe-area-inset-top));
@@ -1590,7 +1590,6 @@ h1, h2 { color: var(--text); margin-bottom: 20px; }
     align-items: center;
     gap: 10px;
     animation: slideIn 0.3s ease-out, fadeOut 0.3s ease-in forwards;
-    border-color: #f5c6cb;
 }
 
 .flash-message .flash-text { flex: 1 1 auto; }

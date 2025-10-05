@@ -367,3 +367,44 @@ BEGIN
         ALTER TABLE public.tasks ADD COLUMN stagger_offset smallint;
     END IF;
 END$$;
+
+-- 9) DB-managed task templates catalog and per-task estimate minutes
+DO $$
+BEGIN
+    -- Create task_templates if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'task_templates'
+    ) THEN
+        CREATE TABLE public.task_templates (
+            task_key text PRIMARY KEY,
+            title text NOT NULL,
+            description text,
+            category text,
+            priority text CHECK (priority IN ('low','medium','high') OR priority IS NULL),
+            frequency_days integer NOT NULL,
+            feature_requirements text,
+            seasonal boolean DEFAULT false,
+            seasonal_anchor_type text CHECK (seasonal_anchor_type IN ('fixed_date','season_start') OR seasonal_anchor_type IS NULL),
+            season_code text CHECK (season_code IN ('spring','summer','autumn','fall','winter') OR season_code IS NULL),
+            season_anchor_month smallint,
+            season_anchor_day smallint,
+            overlap_group text,
+            variant_rank integer,
+            estimated_minutes integer,
+            professional boolean DEFAULT false,
+            active boolean NOT NULL DEFAULT true,
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_task_templates_active ON public.task_templates(active);
+        CREATE INDEX IF NOT EXISTS idx_task_templates_category ON public.task_templates(category);
+    END IF;
+
+    -- Add estimated_minutes to public.tasks if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'estimated_minutes'
+    ) THEN
+        ALTER TABLE public.tasks ADD COLUMN estimated_minutes integer;
+    END IF;
+END$$;

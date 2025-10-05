@@ -122,10 +122,10 @@
             </div>
         </section>
 
-        <!-- Urgent Attention -->
-        <section id="urgent" class="urgent" aria-label="Urgent attention">
+        <!-- Task Spotlight -->
+        <section id="urgent" class="urgent" aria-label="Task spotlight">
             <div class="panel-card">
-                <h3 class="panel-title">Urgent Attention</h3>
+                <h3 class="panel-title">Task Spotlight</h3>
                 <div id="urgent-card">
                     {% if urgent_task %}
                         {% set due_date = urgent_task.next_due_date if urgent_task.next_due_date is defined else urgent_task['next_due_date'] %}

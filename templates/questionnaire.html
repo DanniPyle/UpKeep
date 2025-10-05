@@ -71,7 +71,7 @@
             <label class="option-card">
               <div class="title">Not sure yet</div>
               <div class="hint">We’ll set a gentle default, you can change this later.</div>
-              <input type="radio" name="time_budget" value="" {{ 'checked' if not tb }}>
+              <input type="radio" name="time_budget" value="">
             </label>
           </div>
         </div>
@@ -232,7 +232,7 @@
               <input type="radio" name="fireplace_type" value="gas" {% if prefill.get('fireplace_type')=='gas' %}checked{% endif %}>
             </label>
             <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">None</div>
-              <input type="radio" name="fireplace_type" value="none" {% if prefill.get('fireplace_type') in [None,'', 'none'] %}checked{% endif %}>
+              <input type="radio" name="fireplace_type" value="none" {% if prefill.get('fireplace_type')=='none' %}checked{% endif %}>
             </label>
           </div>
         </div>
@@ -241,7 +241,7 @@
       <!-- Step 3: Kitchen & Laundry (placeholder) -->
       <div class="step" data-title="Appliances">
         <h2>Step 3: Appliances</h2>
-        <p class="muted">Which of these do you have in your home?</p>
+        <p class="muted" style="margin-bottom: 24px;">Which of these do you have in your home?</p>
         <div class="option-cards">
           <label class="option-card"><div class="title">Dishwasher</div>
             <input type="checkbox" name="has_dishwasher" {% if prefill.get('has_dishwasher') %}checked{% endif %}>
@@ -286,7 +286,7 @@
               <input type="radio" name="garage_type" value="detached" {% if prefill.get('garage_type')=='detached' %}checked{% endif %}>
             </label>
             <label class="option-card"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg><div class="title">None</div>
-              <input type="radio" name="garage_type" value="none" {% if prefill.get('garage_type') in [None,'', 'none'] %}checked{% endif %}>
+              <input type="radio" name="garage_type" value="none" {% if prefill.get('garage_type')=='none' %}checked{% endif %}>
             </label>
           </div>
         </div>
@@ -419,7 +419,7 @@
         <div class="success">
           <h2>Great! We’ll build your maintenance plan</h2>
           <p class="muted">Hang tight while we prepare tasks tailored to your home.</p>
-          <button type="submit" id="finalSubmit" class="btn btn-success-soft">Build my plan</button>
+          <button type="submit" id="finalSubmit" class="btn btn-success-soft" style="margin-top: 32px;">Build my plan</button>
         </div>
       </div>
 
@@ -528,32 +528,8 @@
       initOptionCards();
       show(index);
 
-      // AJAX submit with inline error messaging
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const errBox = document.getElementById('saveError');
-        if(errBox){ errBox.style.display='none'; errBox.textContent=''; }
-        try {
-          const fd = new FormData(form);
-          const res = await fetch(`${window.location.origin}${form.getAttribute('action') || '/questionnaire'}`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-            body: fd,
-          });
-          const text = await res.text();
-          let data = null; try { data = JSON.parse(text); } catch(_) {}
-          if(res.ok && data && data.ok){
-            window.location.href = data.redirect || '/dashboard';
-            return;
-          }
-          const msg = (data && data.error) || `Save failed (${res.status})`;
-          if(errBox){ errBox.textContent = msg; errBox.style.display = 'block'; }
-        } catch(err){
-          const errBox2 = document.getElementById('saveError');
-          if(errBox2){ errBox2.textContent = 'Save failed. Please try again.'; errBox2.style.display='block'; }
-        }
-      });
+      // Normal POST submit (MPA). Server will handle and redirect.
+      // No JS interception to avoid SPA/JSON dependency.
     })();
   </script>
 </section>

@@ -1,48 +1,16 @@
-// Configuration
-const API_BASE_URL = ''; // Same-origin when SPA is served by Flask
-
-// State management
-let currentUser = null;
-let authToken = null;
-let tasksCache = {}; // id -> task for editing
-let editingTaskId = null;
-
-// DOM elements
-const authSection = document.getElementById('auth-section');
-const dashboardSection = document.getElementById('dashboard-section');
-const questionnaireSection = document.getElementById('questionnaire-section');
+// Lightweight MPA helpers only
+const API_BASE_URL = '';
+const isMpa = true; // Force MPA-only behavior
 const flashMessages = document.getElementById('flash-messages');
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
-    // Treat any server-rendered page (no #auth-section) as MPA
-    const isMpa = !document.getElementById('auth-section');
-    if (isMpa) {
-        // In MPA we rely on server session and server-rendered pages.
-        // Do not run SPA auth flows; only attach safe UI listeners.
-        setupEventListeners();
-        // Set greeting if present
-        const heroGreeting = document.getElementById('hero-greeting');
-        if (heroGreeting) heroGreeting.textContent = getTimeOfDayGreeting();
-        return;
-    }
-    // SPA mode
-    initializeApp();
     setupEventListeners();
+    const heroGreeting = document.getElementById('hero-greeting');
+    if (heroGreeting) heroGreeting.textContent = getTimeOfDayGreeting();
 });
 
-function initializeApp() {
-    // Check for stored auth token
-    authToken = localStorage.getItem('authToken');
-    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-    
-    if (authToken && currentUser) {
-        showDashboard();
-        loadDashboardData();
-    } else {
-        showAuthSection();
-    }
-}
+// Removed SPA initialization and auth token handling (MPA only)
 
 // Helper: relative due label (e.g., "N days ago", "Today", or formatted date)
 function getRelativeDueLabel(dateStr) {
@@ -385,9 +353,11 @@ function setupEventListeners() {
         userMenu.addEventListener('click', (e) => e.stopPropagation());
     }
     
-    // Questionnaire
+    // Questionnaire: only intercept in SPA mode; let normal form POST in MPA
     const questionnaireForm = document.getElementById('questionnaire-form');
-    if (questionnaireForm) questionnaireForm.addEventListener('submit', handleQuestionnaire);
+    if (questionnaireForm && !isMpa) {
+        questionnaireForm.addEventListener('submit', handleQuestionnaire);
+    }
 
     // Filters: Disable API-bound filters in MPA to avoid token-required endpoints
     if (!isMpa) {
