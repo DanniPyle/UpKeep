@@ -4,9 +4,9 @@
   <div class="hero-inner">
     <div class="hero-text">
       <div class="hero-title-row">
-        <span class="hero-lead-icon" aria-hidden="true">
+        <a href="{{ url_for('dashboard') }}" class="hero-lead-icon" aria-label="Go to dashboard" style="text-decoration: none; cursor: pointer;">
           <svg class="qa-icon" aria-hidden="true"><use href="#icon-keeply-yellow"></use></svg>
-        </span>
+        </a>
         <h1 class="greeting"><span id="hero-greeting">Good afternoon</span>, <span id="hero-name">{{ session.username or 'Friend' }}</span></h1>
       </div>
       <p class="sub">Helping you take care of your home, one step at a time</p>

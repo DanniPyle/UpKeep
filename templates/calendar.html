@@ -13,57 +13,178 @@
 </div>
 
 <div class="task-section span-all">
-  <div class="panel-card">
-    <h3 class="panel-title">{{ year }} – {{ '{:02d}'.format(month) }}</h3>
+  <div class="panel-card" style="overflow-x: auto;">
+    <h3 class="panel-title">{{ month_name }} {{ year }}</h3>
 
-    <div class="calendar-nav" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <div class="calendar-nav" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
       <a class="btn ghost" href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}">◀ Previous</a>
       <a class="btn ghost" href="{{ url_for('calendar_view', year=next_year, month=next_month) }}">Next ▶</a>
     </div>
 
-    <div class="calendar-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+    <div class="calendar-wrapper">
+      <div class="calendar-grid">
       {# Weekday headers #}
       {% for d in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] %}
-        <div class="calendar-cell" style="text-align:center; font-weight:700; color: var(--text-sec, #6b7280);">{{ d }}</div>
+        <div class="calendar-header">{{ d }}</div>
       {% endfor %}
 
       {# Day cells #}
       {% for day in days %}
         <div class="calendar-cell {{ '' if day.in_month else 'out-month' }} {{ 'is-today' if day.is_today else '' }} {{ 'is-past' if day.is_past else '' }}">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <span style="font-weight:700;">{{ day.date.day }}</span>
-          </div>
-          {% if day['items'] %}
-            <ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px;">
-              {% for task in day['items'][:2] %}
-                <li>
-                  <a href="#" class="pill {{ task.priority|lower if task.priority }}" style="font-size:12px; text-decoration:none;"
-                     data-task-id="{{ task.id }}"
-                     data-title="{{ task.title }}"
-                     data-description="{{ task.description or '' }}"
-                     data-frequency="{{ task.frequency_days or '' }}"
-                     data-priority="{{ task.priority or '' }}"
-                     data-category="{{ task.category or '' }}"
-                     data-due-date="{{ task.next_due_date or '' }}"
-                     onclick="openFromCalendar(this); return false;">
-                    {{ task.title }}
-                  </a>
-                </li>
-              {% endfor %}
-            </ul>
-            {% if day['items']|length > 2 %}
-              <div style="margin-top:6px; text-align:center;">
-                <a class="btn-ghost" href="{{ url_for('task_list') }}?status=active&date={{ day.date.isoformat() }}" style="font-size:12px;">See more</a>
-              </div>
+          <div class="day-number">{{ day.date.day }}</div>
+          <div class="day-content">
+            {% if day['items'] %}
+              <ul class="task-list">
+                {% for task in day['items'][:2] %}
+                  <li>
+                    <a href="#" class="pill {{ task.priority|lower if task.priority }}"
+                       data-task-id="{{ task.id }}"
+                       data-title="{{ task.title }}"
+                       data-description="{{ task.description or '' }}"
+                       data-frequency="{{ task.frequency_days or '' }}"
+                       data-priority="{{ task.priority or '' }}"
+                       data-category="{{ task.category or '' }}"
+                       data-due-date="{{ task.next_due_date or '' }}"
+                       onclick="openFromCalendar(this); return false;">
+                      {{ task.title }}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+              {% if day['items']|length > 2 %}
+                <div class="see-more-link">
+                  <a class="btn-ghost" href="{{ url_for('task_list') }}?status=active&date={{ day.date.isoformat() }}">See more</a>
+                </div>
+              {% endif %}
+            {% else %}
+              <div class="no-tasks">No tasks</div>
             {% endif %}
-          {% else %}
-            <div style="color: var(--text-sec, #6b7280); font-size: 12px;">No tasks</div>
-          {% endif %}
+          </div>
         </div>
       {% endfor %}
+      </div>
     </div>
   </div>
 </div>
+
+<style>
+.calendar-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  gap: 1px;
+  background: #e5e7eb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  min-width: 100%;
+}
+
+.calendar-header {
+  background: #f9fafb;
+  text-align: center;
+  font-weight: 700;
+  color: #6b7280;
+  padding: 12px 8px;
+  font-size: 14px;
+}
+
+.calendar-cell {
+  background: white;
+  min-height: 120px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.calendar-cell.out-month {
+  background: #f9fafb;
+  opacity: 0.5;
+}
+
+.calendar-cell.is-today {
+  background: #fffbeb;
+  border: 2px solid #dfae3d;
+}
+
+.calendar-cell.is-past:not(.is-today) {
+  background: #fafafa;
+}
+
+.day-number {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--raisin-black);
+  margin-bottom: 8px;
+}
+
+.day-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-list .pill {
+  font-size: 11px;
+  text-decoration: none;
+  display: block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.see-more-link {
+  text-align: center;
+  margin-top: auto;
+}
+
+.see-more-link .btn-ghost {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.no-tasks {
+  color: #9ca3af;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+  padding: 8px 0;
+}
+
+@media (max-width: 768px) {
+  .calendar-cell {
+    min-height: 100px;
+  }
+  
+  .day-number {
+    font-size: 14px;
+  }
+  
+  .task-list .pill {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+}
+</style>
 
 <script>
 function openFromCalendar(el){

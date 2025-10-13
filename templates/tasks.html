@@ -2,90 +2,258 @@
 
 {% block content %}
 <div class="page-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 4px 0 10px 0;">
-  <h1 style="font-size:28px; line-height:1.2; letter-spacing:-0.02em; margin:0; color: var(--raisin-black);">Task List</h1>
+  <h1 style="font-size:28px; line-height:1.2; letter-spacing:-0.02em; margin:0; color: var(--raisin-black);">
+    {% if filter_date %}
+      Tasks for {{ filter_date.strftime('%B %d, %Y') }}
+    {% else %}
+      Task Board
+    {% endif %}
+  </h1>
   <div style="display:flex; gap:8px; align-items:center;">
+    {% if filter_date %}
+      <a class="btn ghost" href="{{ url_for('task_list') }}">View All Tasks</a>
+    {% endif %}
     <a class="btn ghost" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
 </div>
 
-<div class="task-section span-all" aria-label="All tasks">
-  <div class="panel-card">
-    <h3 class="panel-title">All Tasks</h3>
-    <form method="get" action="{{ url_for('task_list') }}" style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-      <input type="search" name="q" placeholder="Search by title or description" value="{{ request.args.get('q','') }}" style="flex:1; min-width:240px;" />
-      <label for="sort" class="section-sub" style="margin: 0 6px 0 0;">Sort</label>
-      <select id="sort" name="sort">
-        <option value="due" {{ 'selected' if (sort or 'due') == 'due' }}>Due date</option>
-        <option value="priority" {{ 'selected' if sort == 'priority' }}>Priority</option>
-        <option value="title" {{ 'selected' if sort == 'title' }}>Title</option>
-      </select>
-      <label style="display:inline-flex; align-items:center; gap:6px;">
-        <input type="checkbox" name="show_archived" value="true" {% if show_archived %}checked{% endif %} onchange="this.form.submit()" />
-        Show archived
-      </label>
-      <button class="btn" type="submit">Apply</button>
-    </form>
+<!-- Search and Filter Bar -->
+<div style="background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+  <form method="get" action="{{ url_for('task_list') }}" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+    <input type="search" name="q" placeholder="Search tasks..." value="{{ request.args.get('q','') }}" style="flex:1; min-width:200px;" />
+    <label style="display:inline-flex; align-items:center; gap:6px; font-size: 14px;">
+      <input type="checkbox" name="show_archived" value="true" {% if show_archived %}checked{% endif %} onchange="this.form.submit()" />
+      Show archived
+    </label>
+    <button class="btn" type="submit">Search</button>
+  </form>
+</div>
 
-    {% if not tasks %}
-      <p>No tasks found.</p>
-    {% else %}
-      <div class="task-card-list">
-        {% for t in tasks %}
-          {% set due_date = t.next_due_date if t.next_due_date is defined else t['next_due_date'] %}
-          <div class="task-card {{ t.display_state }} {{ 'muted' if t.archived }}">
-            <div class="card-header">
-              <div class="title">{{ t.title }}</div>
-              {% if t.description %}<div class="desc">{{ t.description }}</div>{% endif %}
-              <a class="corner-dot" href="{{ url_for('task_detail', task_id=t.id) }}" title="View details">
-                <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
-              </a>
-            </div>
-            <div class="card-body">
-              <div class="info">
-                <div class="info-item"><span class="label">Due date</span><span class="value">{{ (due_date or '-')|due_label }}</span></div>
-                <div class="info-item"><span class="label">Priority</span><span class="value"><span class="pill {{ t.priority|lower if t.priority }}">{{ t.priority or '-' }}</span></span></div>
-                <div class="info-item"><span class="label">Frequency</span><span class="value"><span class="badge freq">{{ t.frequency_days|frequency_label }}</span></span></div>
-              </div>
-              <div class="actions">
-                {% if not t.is_completed and not t.archived %}
-                  <a class="btn primary" href="{{ url_for('complete_task', task_id=t.id) }}">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>
-                    Complete
-                  </a>
-                {% endif %}
-                <a class="btn ghost" href="{{ url_for('task_detail', task_id=t.id) }}">
-                  View
-                </a>
-                {% if not t.archived %}
-                <a class="btn ghost edit-btn" href="#"
-                   data-task-id="{{ t.id }}"
-                   data-title="{{ t.title }}"
-                   data-description="{{ t.description or '' }}"
-                   data-frequency="{{ t.frequency_days or '' }}"
-                   data-priority="{{ t.priority or '' }}"
-                   data-category="{{ t.category or '' }}"
-                   data-due-date="{{ due_date or '' }}">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-pencil"></use></svg>
-                  Edit
-                </a>
-                {% endif %}
-                <a class="btn ghost history-btn" href="#" data-task-id="{{ t.id }}">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
-                  History
-                </a>
-                {% if t.archived %}
-                <form method="post" action="{{ url_for('restore_task', task_id=t.id) }}" style="display:inline;">
-                  <button class="btn-ghost" type="submit" onclick="return confirm('Restore this task?');">Restore</button>
-                </form>
-                {% endif %}
-              </div>
-            </div>
-          </div>
+{% if filter_date %}
+<!-- Date Filtered View - Single Column -->
+<div class="date-filtered-view">
+  <div class="panel-card">
+    <h3 class="panel-title">{{ date_filtered_tasks|length }} task{{ 's' if date_filtered_tasks|length != 1 else '' }} due</h3>
+    {% if date_filtered_tasks %}
+      <div class="task-list-simple">
+        {% for t in date_filtered_tasks %}
+          {% include 'partials/kanban_card.html' %}
         {% endfor %}
       </div>
+    {% else %}
+      <p class="empty-state">No tasks due on this date.</p>
     {% endif %}
   </div>
 </div>
+{% else %}
+<!-- Kanban Board -->
+<div class="kanban-board">
+  <!-- Overdue Column -->
+  <div class="kanban-column overdue">
+    <div class="column-header">
+      <h3 class="column-title">
+        <svg class="icon" style="color: #d92d20;" aria-hidden="true"><use href="#icon-alert"></use></svg>
+        Overdue
+      </h3>
+      <span class="count-badge">{{ overdue_tasks|length }}</span>
+    </div>
+    <div class="kanban-cards">
+      {% if overdue_tasks %}
+        {% for t in overdue_tasks %}
+          {% include 'partials/kanban_card.html' %}
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">No overdue tasks</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- This Week Column -->
+  <div class="kanban-column this-week">
+    <div class="column-header">
+      <h3 class="column-title">
+        <svg class="icon" style="color: #f79009;" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+        This Week
+      </h3>
+      <span class="count-badge">{{ this_week_tasks|length }}</span>
+    </div>
+    <div class="kanban-cards">
+      {% if this_week_tasks %}
+        {% for t in this_week_tasks %}
+          {% include 'partials/kanban_card.html' %}
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">Nothing due this week</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- This Month Column -->
+  <div class="kanban-column this-month">
+    <div class="column-header">
+      <h3 class="column-title">
+        <svg class="icon" style="color: #17b26a;" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+        This Month
+      </h3>
+      <span class="count-badge">{{ this_month_tasks|length }}</span>
+    </div>
+    <div class="kanban-cards">
+      {% if this_month_tasks %}
+        {% for t in this_month_tasks %}
+          {% include 'partials/kanban_card.html' %}
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">Nothing else this month</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Later Column -->
+  <div class="kanban-column later">
+    <div class="column-header">
+      <h3 class="column-title">
+        <svg class="icon" style="color: #7a8a94;" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+        Later
+      </h3>
+      <span class="count-badge">{{ later_tasks|length }}</span>
+    </div>
+    <div class="kanban-cards">
+      {% if later_tasks %}
+        {% for t in later_tasks %}
+          {% include 'partials/kanban_card.html' %}
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">No future tasks</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Completed Column (if showing completed) -->
+  {% if show_completed %}
+  <div class="kanban-column completed">
+    <div class="column-header">
+      <h3 class="column-title">
+        <svg class="icon" style="color: #17b26a;" aria-hidden="true"><use href="#icon-check"></use></svg>
+        Completed
+      </h3>
+      <span class="count-badge">{{ completed_tasks|length }}</span>
+    </div>
+    <div class="kanban-cards">
+      {% if completed_tasks %}
+        {% for t in completed_tasks %}
+          {% include 'partials/kanban_card.html' %}
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">No completed tasks</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<style>
+.date-filtered-view {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.task-list-simple {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kanban-column {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 400px;
+  min-width: 0; /* Allow columns to shrink below content width */
+  display: flex;
+  flex-direction: column;
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.column-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--raisin-black);
+}
+
+.count-badge {
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  min-width: 24px;
+  text-align: center;
+}
+
+.kanban-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
+}
+
+.kanban-cards::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kanban-cards::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kanban-cards::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.empty-state {
+  color: #9ca3af;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 12px;
+  font-style: italic;
+}
+
+@media (max-width: 1200px) {
+  .kanban-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
 {% endblock %}
 
 {% block scripts %}

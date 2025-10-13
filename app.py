@@ -233,36 +233,66 @@ def frequency_label(days):
         d = int(days)
     except Exception:
         return str(days)
+    
+    # Exact matches for common frequencies
     mapping = {
+        1: 'Daily',
         7: 'Weekly',
         14: 'Every 2 Weeks',
         21: 'Every 3 Weeks',
         28: 'Every 4 Weeks',
         30: 'Monthly',
         60: 'Every 2 Months',
-        90: 'Quarterly',
+        90: 'Every 3 Months',
         120: 'Every 4 Months',
         180: 'Every 6 Months',
         270: 'Every 9 Months',
         365: 'Yearly',
         730: 'Every 2 Years',
         1095: 'Every 3 Years',
+        1460: 'Every 4 Years',
         1825: 'Every 5 Years',
+        2190: 'Every 6 Years',
+        2555: 'Every 7 Years',
+        2920: 'Every 8 Years',
+        3650: 'Every 10 Years',
     }
     if d in mapping:
         return mapping[d]
+    
+    # Smart rounding for near-matches (within 5 days)
+    for exact_days, label in mapping.items():
+        if abs(d - exact_days) <= 5 and exact_days >= 30:
+            return label
+    
     # Heuristics: show common month/years when near multiples
     if d % 365 == 0:
         n = d // 365
         return f"Every {n} Year{'s' if n != 1 else ''}"
+    
+    # Check if close to a year multiple (within 10 days)
+    years = round(d / 365)
+    if years > 0 and abs(d - (years * 365)) <= 10:
+        return f"Every {years} Year{'s' if years != 1 else ''}"
+    
     if d % 30 == 0:
         n = d // 30
         if n == 1:
             return 'Monthly'
         return f"Every {n} Months"
+    
+    # Check if close to a month multiple (within 3 days)
+    months = round(d / 30)
+    if months > 0 and abs(d - (months * 30)) <= 3 and d >= 30:
+        if months == 1:
+            return 'Monthly'
+        return f"Every {months} Months"
+    
     if d % 7 == 0 and d <= 84:
         n = d // 7
         return f"Every {n} Week{'s' if n != 1 else ''}"
+    
+    # Fallback to days
     return f"Every {d} days"
 
 # JWT token decorator
@@ -326,6 +356,9 @@ FEATURE_KEY_ALIASES = {
     'has_disposal': 'has_garbage_disposal',
     'has_washer': 'has_washer_dryer',
     'has_smoke_dectectors': 'has_smoke_detectors',  # typo variant
+    # Map new aliases to existing questionnaire fields
+    'has_outdoor': 'has_yard',  # has_outdoor -> has_yard
+    'has_deck': 'has_deck_patio',  # has_deck -> has_deck_patio
 }
 
 # --- Catalog import/validation constants & helpers ---
@@ -359,6 +392,10 @@ ALLOWED_FEATURE_KEYS = {
     'pet_other',
     'travel_often',
     'has_yard',
+    # Additional feature aliases
+    'has_carpet',
+    'has_outdoor',
+    'has_deck',
 }
 
 PRIORITY_VALUES = {'low', 'medium', 'high'}
@@ -714,6 +751,7 @@ def dashboard():
             tasks_res = (supabase.table('tasks')
                          .select('*')
                          .eq('user_id', user_id)
+                         .eq('is_completed', False)
                          .eq('archived', False)
                          .order('next_due_date')
                          .execute())
@@ -723,6 +761,7 @@ def dashboard():
             tasks_res = (supabase.table('tasks')
                          .select('*')
                          .eq('user_id', user_id)
+                         .eq('is_completed', False)
                          .order('next_due_date')
                          .execute())
             tasks = tasks_res.data or []
@@ -921,9 +960,15 @@ def calendar_view():
     next_year = year if month < 12 else year + 1
     next_month = month + 1 if month < 12 else 1
 
+    # Get month name
+    month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                   'July', 'August', 'September', 'October', 'November', 'December']
+    month_name = month_names[month - 1]
+    
     return render_template('calendar.html', 
                            year=year,
                            month=month,
+                           month_name=month_name,
                            days=days,
                            prev_year=prev_year,
                            prev_month=prev_month,
@@ -986,13 +1031,50 @@ def questionnaire():
         return redirect(url_for('login'))
     user_id = session['user_id']
     if request.method == 'POST':
-        # Minimal stub: store a couple of booleans if table exists
+        # Save all questionnaire fields
         try:
             features = {
                 'user_id': user_id,
+                # Home basics
+                'home_type': request.form.get('home_type'),
+                'year_built': request.form.get('year_built'),
+                'home_size': request.form.get('home_size'),
+                'has_yard': request.form.get('has_yard') == 'yes',
+                'carpet': request.form.get('carpet'),
+                # Systems
                 'has_hvac': bool(request.form.get('has_hvac')),
-                'has_gutters': bool(request.form.get('has_gutters')),
+                'has_window_units': bool(request.form.get('has_window_units')),
+                'has_radiator_boiler': bool(request.form.get('has_radiator_boiler')),
+                'no_central_hvac': bool(request.form.get('no_central_hvac')),
+                'has_water_heater': bool(request.form.get('has_water_heater')),
+                'has_water_softener': bool(request.form.get('has_water_softener')),
+                'has_well': bool(request.form.get('has_well')),
+                'has_septic': bool(request.form.get('has_septic')),
+                'has_sump_pump': request.form.get('has_sump_pump') == 'yes',
+                'fireplace_type': request.form.get('fireplace_type'),
+                # Appliances
                 'has_dishwasher': bool(request.form.get('has_dishwasher')),
+                'has_garbage_disposal': bool(request.form.get('has_garbage_disposal')),
+                'has_washer_dryer': bool(request.form.get('has_washer_dryer')),
+                'has_refrigerator_ice': bool(request.form.get('has_refrigerator_ice')),
+                'has_range_hood': bool(request.form.get('has_range_hood')),
+                # Exterior
+                'has_gutters': request.form.get('has_gutters') == 'yes',
+                'garage_type': request.form.get('garage_type'),
+                'has_deck_patio': request.form.get('has_deck_patio') == 'yes',
+                'has_pool_hot_tub': request.form.get('has_pool_hot_tub') == 'yes',
+                # Climate
+                'freezes': request.form.get('freezes') == 'yes',
+                'season_spring': f"2024-{request.form.get('season_spring', '03')}-01" if request.form.get('season_spring') else None,
+                'season_summer': f"2024-{request.form.get('season_summer', '06')}-01" if request.form.get('season_summer') else None,
+                'season_autumn': f"2024-{request.form.get('season_autumn', '09')}-01" if request.form.get('season_autumn') else None,
+                'season_winter': f"2024-{request.form.get('season_winter', '12')}-01" if request.form.get('season_winter') else None,
+                # Lifestyle
+                'has_pets': request.form.get('has_pets') == 'yes',
+                'pet_dog': bool(request.form.get('pet_dog')),
+                'pet_cat': bool(request.form.get('pet_cat')),
+                'pet_other': bool(request.form.get('pet_other')),
+                'travel_often': request.form.get('travel_often') == 'yes',
             }
             # Persist persona and time budget on the users table (NOT in home_features)
             try:
@@ -1156,13 +1238,114 @@ def task_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     user_id = session['user_id']
+    
+    # Get filter parameters
+    search_query = request.args.get('q', '').strip()  # Search query
+    show_archived = request.args.get('show_archived') == 'true'
+    show_completed = request.args.get('show_completed') == 'true'
+    date_filter = request.args.get('date')  # Specific date filter (YYYY-MM-DD)
+    
     try:
-        res = supabase.table('tasks').select('*').eq('user_id', user_id).eq('archived', False).order('next_due_date').execute()
-        tasks = res.data or []
-    except Exception:
-        tasks = []
-    counts = {'active': len([t for t in tasks if not t.get('is_completed')]), 'completed': len([t for t in tasks if t.get('is_completed')]), 'archived': 0, 'total': len(tasks)}
-    return render_template('tasks.html', tasks=tasks, sort='due', show_archived=False, status='all', counts=counts)
+        # Base query - get all non-archived tasks
+        query = supabase.table('tasks').select('*').eq('user_id', user_id)
+        
+        if not show_archived:
+            query = query.eq('archived', False)
+        
+        res = query.execute()
+        all_tasks = res.data or []
+        
+        # Apply search filter
+        if search_query:
+            search_lower = search_query.lower()
+            all_tasks = [t for t in all_tasks if 
+                        search_lower in (t.get('title') or '').lower() or 
+                        search_lower in (t.get('description') or '').lower()]
+        
+        # If date filter is provided, filter to that specific date
+        if date_filter:
+            try:
+                target_date = datetime.fromisoformat(date_filter).date()
+                filtered_tasks = [t for t in all_tasks if t.get('next_due_date') and 
+                                 datetime.fromisoformat(t['next_due_date']).date() == target_date]
+                # Return single column view for date-filtered tasks
+                return render_template('tasks.html',
+                                     overdue_tasks=[],
+                                     this_week_tasks=[],
+                                     this_month_tasks=[],
+                                     later_tasks=[],
+                                     completed_tasks=[],
+                                     date_filtered_tasks=filtered_tasks,
+                                     filter_date=target_date,
+                                     show_archived=show_archived,
+                                     show_completed=show_completed)
+            except Exception:
+                pass  # Fall through to normal kanban view
+        
+        # Organize tasks into kanban columns
+        today = datetime.now().date()
+        end_of_week = today + timedelta(days=(6 - today.weekday()))  # Sunday
+        end_of_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        
+        overdue_tasks = []
+        this_week_tasks = []
+        this_month_tasks = []
+        later_tasks = []
+        completed_tasks = []
+        
+        for t in all_tasks:
+            # Completed tasks
+            if t.get('is_completed'):
+                if show_completed:
+                    completed_tasks.append(t)
+                continue
+            
+            # Active tasks - organize by due date
+            nd = t.get('next_due_date')
+            if not nd:
+                later_tasks.append(t)
+                continue
+            
+            try:
+                due_date = datetime.fromisoformat(nd).date()
+            except Exception:
+                later_tasks.append(t)
+                continue
+            
+            if due_date < today:
+                overdue_tasks.append(t)
+            elif due_date <= end_of_week:
+                this_week_tasks.append(t)
+            elif due_date <= end_of_month:
+                this_month_tasks.append(t)
+            else:
+                later_tasks.append(t)
+        
+        # Sort each column by due date
+        overdue_tasks.sort(key=lambda t: t.get('next_due_date') or '9999-99-99')
+        this_week_tasks.sort(key=lambda t: t.get('next_due_date') or '9999-99-99')
+        this_month_tasks.sort(key=lambda t: t.get('next_due_date') or '9999-99-99')
+        later_tasks.sort(key=lambda t: t.get('next_due_date') or '9999-99-99')
+        completed_tasks.sort(key=lambda t: t.get('last_completed') or '0000-00-00', reverse=True)
+            
+    except Exception as e:
+        print(f"Error loading tasks: {e}")
+        overdue_tasks = []
+        this_week_tasks = []
+        this_month_tasks = []
+        later_tasks = []
+        completed_tasks = []
+    
+    return render_template('tasks.html', 
+                         overdue_tasks=overdue_tasks,
+                         this_week_tasks=this_week_tasks,
+                         this_month_tasks=this_month_tasks,
+                         later_tasks=later_tasks,
+                         completed_tasks=completed_tasks,
+                         date_filtered_tasks=[],
+                         filter_date=None,
+                         show_archived=show_archived,
+                         show_completed=show_completed)
 
 @app.route('/home')
 def home():
@@ -1480,9 +1663,17 @@ def _filter_rows_by_features(rows, features):
             continue
         ok = True
         for k, v in req.items():
-            if bool(features.get(k, False)) != bool(v):
-                ok = False
-                break
+            # Special handling for has_carpet (stored as 'yes'/'no'/'some')
+            if k == 'has_carpet':
+                carpet_value = features.get('carpet', '')
+                has_carpet = carpet_value in ('yes', 'some')
+                if has_carpet != bool(v):
+                    ok = False
+                    break
+            else:
+                if bool(features.get(k, False)) != bool(v):
+                    ok = False
+                    break
         if ok:
             kept.append(r)
     return kept
