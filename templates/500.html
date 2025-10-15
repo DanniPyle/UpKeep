@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; padding: 24px;">
+  <div style="max-width: 500px;">
+    <svg style="width: 120px; height: 120px; margin-bottom: 24px; color: #d92d20;" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+    </svg>
+    
+    <h1 style="font-size: 48px; font-weight: 700; color: var(--raisin-black); margin: 0 0 16px 0;">500</h1>
+    <h2 style="font-size: 24px; font-weight: 600; color: var(--raisin-black); margin: 0 0 12px 0;">Something Went Wrong</h2>
+    <p style="font-size: 16px; color: #6b7280; margin: 0 0 32px 0; line-height: 1.6;">
+      We're sorry, but something unexpected happened on our end. Our team has been notified and we're working to fix it.
+    </p>
+    
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+      <a href="{{ url_for('dashboard') }}" class="btn">
+        <svg class="icon" aria-hidden="true" style="width: 16px; height: 16px;"><use href="#icon-home"></use></svg>
+        Go to Dashboard
+      </a>
+      <a href="javascript:window.location.reload()" class="btn ghost">
+        <svg class="icon" aria-hidden="true" style="width: 16px; height: 16px;"><use href="#icon-refresh"></use></svg>
+        Try Again
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

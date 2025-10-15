@@ -35,6 +35,16 @@
 
         {% block content %}{% endblock %}
     </div>
+    
+    <!-- Global Loading Spinner -->
+    <div id="global-loader" class="global-loader" style="display: none;">
+        <div class="loader-backdrop"></div>
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <p class="loader-text">Loading...</p>
+        </div>
+    </div>
+    
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

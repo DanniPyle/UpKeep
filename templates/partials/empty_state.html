@@ -1,0 +1,36 @@
+{# 
+  Empty State Component
+  Usage: {% include 'partials/empty_state.html' with context %}
+  
+  Variables:
+  - icon: SVG icon ID (e.g., 'icon-task-list')
+  - title: Main heading
+  - description: Explanatory text
+  - action_text: Button text (optional)
+  - action_url: Button URL (optional)
+  - compact: Use compact style (optional, default false)
+#}
+
+{% if compact %}
+  <div class="empty-state-compact">
+    {% if icon %}
+      <svg aria-hidden="true"><use href="#{{ icon }}"></use></svg>
+    {% endif %}
+    <p>{{ description }}</p>
+  </div>
+{% else %}
+  <div class="empty-state-container">
+    {% if icon %}
+      <svg class="empty-state-icon" aria-hidden="true"><use href="#{{ icon }}"></use></svg>
+    {% endif %}
+    
+    <h3 class="empty-state-title">{{ title }}</h3>
+    <p class="empty-state-description">{{ description }}</p>
+    
+    {% if action_text and action_url %}
+      <div class="empty-state-action">
+        <a href="{{ action_url }}" class="btn">{{ action_text }}</a>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}

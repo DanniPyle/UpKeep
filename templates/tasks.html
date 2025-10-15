@@ -41,7 +41,12 @@
         {% endfor %}
       </div>
     {% else %}
-      <p class="empty-state">No tasks due on this date.</p>
+      {% set icon = 'icon-calendar' %}
+      {% set title = 'No Tasks Found' %}
+      {% set description = 'There are no tasks scheduled for this date.' %}
+      {% set action_text = 'View All Tasks' %}
+      {% set action_url = url_for('task_list') %}
+      {% include 'partials/empty_state.html' %}
     {% endif %}
   </div>
 </div>

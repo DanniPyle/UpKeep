@@ -3,11 +3,29 @@ const API_BASE_URL = '';
 const isMpa = true; // Force MPA-only behavior
 const flashMessages = document.getElementById('flash-messages');
 
+// Loading state helpers
+function showLoader(message = 'Loading...') {
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        const text = loader.querySelector('.loader-text');
+        if (text) text.textContent = message;
+        loader.style.display = 'flex';
+    }
+}
+
+function hideLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) loader.style.display = 'none';
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     const heroGreeting = document.getElementById('hero-greeting');
     if (heroGreeting) heroGreeting.textContent = getTimeOfDayGreeting();
+    
+    // Auto-hide loader on page load
+    hideLoader();
 });
 
 // Removed SPA initialization and auth token handling (MPA only)
@@ -300,6 +318,25 @@ function closeHistoryModal() {
 function setupEventListeners() {
     // Treat any server-rendered page (no #auth-section) as MPA
     const isMpa = !document.getElementById('auth-section');
+    
+    // Add loading state to all task completion links
+    document.querySelectorAll('a[href*="/complete/"]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            showLoader('Completing task...');
+        });
+    });
+    
+    // Add loading state to navigation links that load new pages
+    document.querySelectorAll('a.btn, a.quick-btn').forEach(link => {
+        if (link.href && !link.href.includes('#') && !link.target) {
+            link.addEventListener('click', function(e) {
+                if (!e.ctrlKey && !e.metaKey) {
+                    showLoader('Loading...');
+                }
+            });
+        }
+    });
+    
     // Auth tabs (SPA only)
     const loginTab = document.getElementById('login-tab');
     const registerTab = document.getElementById('register-tab');

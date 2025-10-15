@@ -253,7 +253,11 @@
                         </div>
                         {% endif %}
                     {% else %}
-                        <p>No overdue tasks 🎉</p>
+                        {% set icon = 'icon-check' %}
+                        {% set title = 'All Caught Up!' %}
+                        {% set description = 'You have no overdue tasks. Great job staying on top of your home maintenance!' %}
+                        {% set compact = true %}
+                        {% include 'partials/empty_state.html' %}
                     {% endif %}
                 </div>
             </div>
@@ -322,7 +326,11 @@
                         </div>
                         {% endif %}
                     {% else %}
-                        <p>No upcoming tasks in the next 30 days.</p>
+                        {% set icon = 'icon-calendar' %}
+                        {% set title = 'Nothing Scheduled' %}
+                        {% set description = 'You have no tasks due in the next 30 days. Check back later or add a custom task.' %}
+                        {% set compact = true %}
+                        {% include 'partials/empty_state.html' %}
                     {% endif %}
                 </div>
             </div>

@@ -528,8 +528,17 @@
       initOptionCards();
       show(index);
 
-      // Normal POST submit (MPA). Server will handle and redirect.
-      // No JS interception to avoid SPA/JSON dependency.
+      // Show loader on form submit
+      form.addEventListener('submit', function(e) {
+        const submitBtn = document.getElementById('finalSubmit');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span class="btn-spinner"></span>Building your plan...';
+        }
+        if (typeof showLoader === 'function') {
+          showLoader('Building your personalized maintenance plan...');
+        }
+      });
     })();
   </script>
 </section>

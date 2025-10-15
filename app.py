@@ -977,6 +977,14 @@ def calendar_view():
                            today_year=today.year,
                            today_month=today.month)
 
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
+
 @app.route('/settings', methods=['GET', 'POST'])
 def settings():
     if 'user_id' not in session:
@@ -2589,6 +2597,15 @@ def test_email():
         flash(f'Error sending test email: {e}')
     
     return redirect(url_for('dashboard'))
+
+# Error handlers
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    return render_template('500.html'), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
