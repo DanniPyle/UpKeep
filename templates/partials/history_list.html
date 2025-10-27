@@ -18,14 +18,11 @@
           <span class="action badge">{{ h.action|capitalize }}</span>
           <span class="ts">{{ format_dt(h.created_at) }}</span>
         </div>
+        {% if h.delta_days %}
         <div class="row-sub">
-          {% if h.delta_days %}
-            <span class="sub">Delta: {{ h.delta_days }} days</span>
-          {% endif %}
-          {% if h.notes %}
-            <span class="sub">{{ h.notes }}</span>
-          {% endif %}
+          <span class="sub">Delta: {{ h.delta_days }} days</span>
         </div>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>

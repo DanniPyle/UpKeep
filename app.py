@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from supabase import create_client
 from datetime import datetime, timedelta, date
@@ -19,8 +20,49 @@ from email_templates import overdue_tasks_email, weekly_home_checkin, LOGO_URL
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this')
-CORS(app)
+
+# Load configuration based on environment
+env = os.getenv('FLASK_ENV', 'development')
+if env == 'production':
+    from config import ProductionConfig
+    app.config.from_object(ProductionConfig)
+else:
+    from config import DevelopmentConfig
+    app.config.from_object(DevelopmentConfig)
+
+# Verify secret key is set
+if not app.config.get('SECRET_KEY'):
+    raise ValueError("FLASK_SECRET_KEY must be set in environment variables for security")
+
+# CSRF Protection
+csrf = CSRFProtect(app)
+
+# CORS Configuration - Restrict to your domain
+# In development, allow localhost. In production, set FRONTEND_URL to your domain
+allowed_origins = []
+if env == 'production':
+    frontend_url = os.getenv('FRONTEND_URL')
+    if frontend_url:
+        allowed_origins = [frontend_url]
+    else:
+        # If no FRONTEND_URL set, only allow same-origin
+        allowed_origins = []
+else:
+    # Development: allow localhost
+    allowed_origins = [
+        'http://localhost:5000',
+        'http://127.0.0.1:5000',
+        'http://localhost:3000',  # If you have a separate frontend
+    ]
+
+CORS(app, resources={
+    r"/*": {
+        "origins": allowed_origins if allowed_origins else False,
+        "methods": ["GET", "POST", "PUT", "DELETE"],
+        "allow_headers": ["Content-Type", "X-CSRFToken"],
+        "supports_credentials": True
+    }
+})
 
 # --- Minimal routes (root + health) ---
 @app.route('/')
@@ -75,7 +117,23 @@ def create_task():
             payload['category'] = category
         if priority is not None:
             payload['priority'] = priority
-        supabase.table('tasks').insert(payload).execute()
+        
+        # Insert task and get the created task ID
+        result = supabase.table('tasks').insert(payload).execute()
+        
+        # Create history entry for task creation
+        if result.data and len(result.data) > 0:
+            task_id = result.data[0]['id']
+            try:
+                supabase.table('task_history').insert({
+                    'task_id': task_id,
+                    'user_id': user_id,
+                    'action': 'created',
+                    'created_at': datetime.now().isoformat()
+                }).execute()
+            except Exception as hist_error:
+                print(f"Warning: Could not create history entry: {hist_error}")
+        
         # For fetch-based caller, any 2xx is fine; return plain text
         return ('OK', 200)
     except Exception as e:
@@ -173,7 +231,21 @@ def edit_task(task_id):
             payload['next_due_date'] = next_due_date
         if priority is not None and 'priority' in row:
             payload['priority'] = priority
+        
+        # Update task
         supabase.table('tasks').update(payload).eq('id', task_id).eq('user_id', user_id).eq('archived', False).execute()
+        
+        # Create history entry
+        try:
+            supabase.table('task_history').insert({
+                'task_id': task_id,
+                'user_id': user_id,
+                'action': 'updated',
+                'created_at': datetime.now().isoformat()
+            }).execute()
+        except Exception as hist_error:
+            print(f"Warning: Could not create history entry: {hist_error}")
+        
         flash(f'Task "{title}" updated successfully!')
     except Exception as e:
         flash(f'Error updating task: {e}')
@@ -544,6 +616,7 @@ def register():
             }).execute()
             if res.data:
                 user = res.data[0]
+                session.permanent = True  # Enable session lifetime
                 session['user_id'] = user['id']
                 session['username'] = user['username']
                 flash('Registration successful!')
@@ -562,6 +635,7 @@ def login():
             res = supabase.table('users').select('*').eq('email', email).execute()
             if res.data and check_password_hash(res.data[0]['password_hash'], password):
                 user = res.data[0]
+                session.permanent = True  # Enable session lifetime
                 session['user_id'] = user['id']
                 session['username'] = user['username']
                 return redirect(url_for('dashboard'))
@@ -1584,7 +1658,25 @@ def complete_task(task_id):
         task = res.data[0]
         today = datetime.now().date()
         next_due = today + timedelta(days=task['frequency_days'])
-        supabase.table('tasks').update({'is_completed': True, 'last_completed': today.isoformat(), 'next_due_date': next_due.isoformat()}).eq('id', task_id).execute()
+        
+        # Update task
+        supabase.table('tasks').update({
+            'is_completed': True, 
+            'last_completed': today.isoformat(), 
+            'next_due_date': next_due.isoformat()
+        }).eq('id', task_id).execute()
+        
+        # Create history entry
+        try:
+            supabase.table('task_history').insert({
+                'task_id': task_id,
+                'user_id': user_id,
+                'action': 'completed',
+                'created_at': datetime.now().isoformat()
+            }).execute()
+        except Exception as hist_error:
+            print(f"Warning: Could not create history entry: {hist_error}")
+        
         flash(f'Task "{task["title"]}" completed! Next due: {next_due}')
     except Exception as e:
         flash(f'Error completing task: {e}')
@@ -1600,7 +1692,24 @@ def reset_task(task_id):
         if not res.data:
             flash('Task not found')
             return redirect(url_for('dashboard'))
-        supabase.table('tasks').update({'is_completed': False, 'last_completed': None}).eq('id', task_id).execute()
+        
+        # Update task
+        supabase.table('tasks').update({
+            'is_completed': False, 
+            'last_completed': None
+        }).eq('id', task_id).execute()
+        
+        # Create history entry
+        try:
+            supabase.table('task_history').insert({
+                'task_id': task_id,
+                'user_id': user_id,
+                'action': 'reset',
+                'created_at': datetime.now().isoformat()
+            }).execute()
+        except Exception as hist_error:
+            print(f"Warning: Could not create history entry: {hist_error}")
+        
         flash('Task reset to active')
     except Exception as e:
         flash(f'Error resetting task: {e}')

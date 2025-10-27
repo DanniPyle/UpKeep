@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://keeplyhome.com/sitemap.xml

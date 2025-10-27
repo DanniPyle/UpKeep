@@ -3,6 +3,28 @@ const API_BASE_URL = '';
 const isMpa = true; // Force MPA-only behavior
 const flashMessages = document.getElementById('flash-messages');
 
+// CSRF Token helper
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+// Fetch wrapper with CSRF token
+function fetchWithCSRF(url, options = {}) {
+    const csrfToken = getCSRFToken();
+    
+    // Add CSRF token to headers
+    options.headers = options.headers || {};
+    if (csrfToken) {
+        options.headers['X-CSRFToken'] = csrfToken;
+    }
+    
+    // Ensure credentials are included for session cookies
+    options.credentials = options.credentials || 'same-origin';
+    
+    return fetch(url, options);
+}
+
 // Loading state helpers
 function showLoader(message = 'Loading...') {
     const loader = document.getElementById('global-loader');
@@ -159,7 +181,7 @@ function buildTaskCard(task, options = {}) {
 
 async function snoozeTaskQuick(taskId, days) {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -213,7 +235,7 @@ async function snoozeTask(taskId) {
         return;
     }
     try {
-        const response = await fetch(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/snooze_task/${taskId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -545,7 +567,7 @@ async function handleLogin(e) {
     const password = document.getElementById('login-password').value;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/login`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -579,7 +601,7 @@ async function handleRegister(e) {
     const password = document.getElementById('register-password').value;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/register`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -822,7 +844,7 @@ async function saveEditTask() {
     const next_due_date = (document.getElementById('edit-due-date') && document.getElementById('edit-due-date').value) ? document.getElementById('edit-due-date').value : null;
     if (!validateEditForm()) return;
     try {
-        const response = await fetch(`${API_BASE_URL}/api/tasks/${editingTaskId}`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/tasks/${editingTaskId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -845,7 +867,7 @@ async function saveEditTask() {
 
 async function completeTask(taskId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/complete_task/${taskId}`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/complete_task/${taskId}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${authToken}`
@@ -867,7 +889,7 @@ async function completeTask(taskId) {
 
 async function resetTask(taskId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/reset_task/${taskId}`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/reset_task/${taskId}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${authToken}`
@@ -936,7 +958,7 @@ async function handleQuestionnaire(e) {
     };
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/questionnaire`, {
+        const response = await fetchWithCSRF(`${API_BASE_URL}/api/questionnaire`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
