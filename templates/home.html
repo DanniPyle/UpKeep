@@ -27,6 +27,7 @@
         <div class="muted" style="font-size:12px;">Upload a picture of your house for the banner.</div>
       </div>
       <form method="POST" action="{{ url_for('upload_home_photo') }}" enctype="multipart/form-data" style="display:flex; align-items:center; gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" />
         <button type="submit" class="btn">Upload</button>
       </form>

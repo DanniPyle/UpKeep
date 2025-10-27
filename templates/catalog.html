@@ -14,6 +14,7 @@
 <div class="panel-card">
   <h3 class="panel-title">Upload CSV</h3>
   <form method="POST" action="{{ url_for('catalog_admin') }}" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     <input type="file" name="file" accept="text/csv,.csv" required />
     <button type="submit" class="btn">Upload</button>
   </form>
@@ -24,6 +25,7 @@
   <h3 class="panel-title">Regenerate Tasks</h3>
   <p class="muted">Rebuild your tasks from the current catalog and your saved Home Details.</p>
   <form method="POST" action="{{ url_for('regenerate_tasks') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     <button type="submit" class="btn">Regenerate Tasks</button>
   </form>
 </div>
