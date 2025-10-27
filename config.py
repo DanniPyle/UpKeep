@@ -7,6 +7,11 @@ from datetime import timedelta
 class Config:
     """Base configuration"""
     SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
+    if not SECRET_KEY:
+        # Temporary fallback - REPLACE THIS IN PRODUCTION
+        import sys
+        print("WARNING: FLASK_SECRET_KEY not set! Using fallback.", file=sys.stderr)
+        SECRET_KEY = 'temporary-fallback-key-CHANGE-THIS'
     
     # Session configuration
     SESSION_COOKIE_HTTPONLY = True

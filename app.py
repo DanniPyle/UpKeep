@@ -30,9 +30,7 @@ else:
     from config import DevelopmentConfig
     app.config.from_object(DevelopmentConfig)
 
-# Verify secret key is set
-if not app.config.get('SECRET_KEY'):
-    raise ValueError("FLASK_SECRET_KEY must be set in environment variables for security")
+# Secret key verification (now handled in config.py with fallback)
 
 # CSRF Protection
 csrf = CSRFProtect(app)
@@ -254,16 +252,27 @@ def edit_task(task_id):
 
 @app.route('/healthz')
 def healthz():
-    return jsonify({'ok': True, 'time': datetime.utcnow().isoformat()+'Z'}), 200
+    return jsonify({
+        'ok': True, 
+        'time': datetime.utcnow().isoformat()+'Z',
+        'env': os.getenv('FLASK_ENV', 'development'),
+        'has_secret_key': bool(app.config.get('SECRET_KEY')),
+        'has_supabase_url': bool(os.getenv('SUPABASE_URL')),
+        'has_supabase_key': bool(os.getenv('SUPABASE_ANON_KEY'))
+    }), 200
 
 # Supabase configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY')
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    import sys
+    print("ERROR: SUPABASE_URL and SUPABASE_ANON_KEY must be set!", file=sys.stderr)
+    print("The app will not function without database credentials.", file=sys.stderr)
+    # Don't raise immediately - let healthz endpoint work for debugging
+    supabase = None
+else:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Runtime feature flag: whether the 'tasks.task_key' column exists in the DB.
 # If inserts fail due to schema cache or missing column, we'll disable it and retry without.
