@@ -43,8 +43,8 @@ if env == 'production':
     if frontend_url:
         allowed_origins = [frontend_url]
     else:
-        # If no FRONTEND_URL set, only allow same-origin
-        allowed_origins = []
+        # If no FRONTEND_URL set in production, allow the production domain
+        allowed_origins = ['https://keeplyhome.com']
 else:
     # Development: allow localhost
     allowed_origins = [
@@ -55,7 +55,7 @@ else:
 
 CORS(app, resources={
     r"/*": {
-        "origins": allowed_origins if allowed_origins else False,
+        "origins": allowed_origins,
         "methods": ["GET", "POST", "PUT", "DELETE"],
         "allow_headers": ["Content-Type", "X-CSRFToken"],
         "supports_credentials": True
